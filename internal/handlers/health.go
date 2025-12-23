@@ -23,8 +23,11 @@ func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	if result == "ok" {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
-		h.logger.Info("Sent 200 OK response for health check")
+		if _, err := w.Write([]byte("ok")); err != nil {
+			h.logger.Info("Sent 200 OK response for health check")
+		}
+
+		h.logger.Info("Couldn't write response")
 		return
 	}
 
