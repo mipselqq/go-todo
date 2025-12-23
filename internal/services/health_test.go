@@ -1,9 +1,8 @@
 package services
 
 import (
+	"go-todo/internal/logging"
 	"testing"
-
-	logging "go-todo/internal"
 )
 
 func TestHealthCheck(t *testing.T) {

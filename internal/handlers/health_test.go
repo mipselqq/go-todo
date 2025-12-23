@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	logging "go-todo/internal"
+	"go-todo/internal/logging"
 	"go-todo/internal/services"
 )
 

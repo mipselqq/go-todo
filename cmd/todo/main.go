@@ -9,14 +9,14 @@ import (
 	"syscall"
 	"time"
 
-	logging "go-todo/internal"
 	"go-todo/internal/handlers"
+	"go-todo/internal/logging"
 	"go-todo/internal/services"
 )
 
 func main() {
 	loggerBase := logging.NewLoggerBase()
-	logger := loggerBase.With("component", "main")
+	logger := loggerBase.With("scope", "main")
 
 	mux := http.NewServeMux()
 

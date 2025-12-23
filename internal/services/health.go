@@ -7,7 +7,7 @@ type HealthCheckService struct {
 }
 
 func NewHealthCheckService(loggerBase *slog.Logger) *HealthCheckService {
-	return &HealthCheckService{logger: loggerBase.With("component", "health_service")}
+	return &HealthCheckService{logger: loggerBase.With("scope", "health_service")}
 }
 
 func (s *HealthCheckService) HealthCheck() error {
