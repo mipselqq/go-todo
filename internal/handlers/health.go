@@ -1,9 +1,10 @@
 package handlers
 
 import (
-	"go-todo/internal/services"
 	"log/slog"
 	"net/http"
+
+	"go-todo/internal/services"
 )
 
 type HealthHandler struct {

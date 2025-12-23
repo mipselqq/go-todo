@@ -1,11 +1,12 @@
 package handlers
 
 import (
-	logging "go-todo/internal"
-	"go-todo/internal/services"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	logging "go-todo/internal"
+	"go-todo/internal/services"
 )
 
 func TestHealthCheckResponds200(t *testing.T) {

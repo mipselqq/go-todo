@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	logging "go-todo/internal"
-	"go-todo/internal/handlers"
-	"go-todo/internal/services"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	logging "go-todo/internal"
+	"go-todo/internal/handlers"
+	"go-todo/internal/services"
 )
 
 func main() {

@@ -1,0 +1,9 @@
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+  modules-download-mode: mod
+
+linters:
+  default: all
