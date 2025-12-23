@@ -31,7 +31,7 @@ func main() {
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil {
+		if err := server.ListenAndServe(); err != nil && err == http.ErrServerClosed {
 			loggerBase.Error("Failed to listen and serve", "err", err)
 			os.Exit(1)
 		}
