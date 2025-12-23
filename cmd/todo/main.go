@@ -1,18 +1,21 @@
 package main
 
 import (
+	logging "go-todo/internal"
 	"go-todo/internal/handlers"
-	"log/slog"
+	"go-todo/internal/services"
 	"net/http"
 	"os"
 	"time"
 )
 
 func main() {
+	logger_base := logging.NewLoggerBase()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", handlers.HealthCheck)
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	healthService := services.NewHealthCheckService(logger_base)
+	healthHandler := handlers.NewHealthHandler(logger_base, healthService)
+	mux.HandleFunc("/health", healthHandler.HealthCheck)
 
 	addr := ":8080"
 	server := &http.Server{
@@ -24,12 +27,12 @@ func main() {
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil {
-			logger.Error("Failed to listen and serve", "err", err)
+			logger_base.Error("Failed to listen and serve", "err", err)
 			os.Exit(1)
 		}
 	}()
 
-	logger.Info("Server started at", "addr", addr)
+	logger_base.Info("Server started at", "addr", addr)
 
 	select {}
 }

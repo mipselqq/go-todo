@@ -1,18 +1,23 @@
 package handlers
 
 import (
+	logging "go-todo/internal"
+	"go-todo/internal/services"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestHealthCheckEndpoint(t *testing.T) {
+func TestHealthCheckResponds200(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
-	w := httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 
-	HealthCheckHandler(w, req)
+	healthService := services.NewHealthCheckService(logging.NewDiscardLogger())
+	healthHandler := NewHealthHandler(logging.NewDiscardLogger(), healthService)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected OK 200, got %d", w.Code)
+	healthHandler.HealthCheck(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected OK 200, got %d", rec.Code)
 	}
 }
