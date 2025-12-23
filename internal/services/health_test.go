@@ -9,9 +9,9 @@ import (
 func TestHealthCheck(t *testing.T) {
 	t.Parallel()
 
-	result := NewHealthCheckService(logging.NewDiscardLogger()).HealthCheck()
+	err := NewHealthCheckService(logging.NewDiscardLogger()).HealthCheck()
 
-	if result != "ok" {
-		t.Errorf("Expected 'ok', got '%s'", result)
+	if err != nil {
+		t.Errorf("Expected no errors, got '%s'", err)
 	}
 }

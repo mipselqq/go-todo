@@ -20,9 +20,9 @@ func NewHealthHandler(loggerBase *slog.Logger, service *services.HealthCheckServ
 }
 
 func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	result := h.service.HealthCheck()
+	err := h.service.HealthCheck()
 
-	if result == "ok" {
+	if err == nil {
 		w.WriteHeader(http.StatusOK)
 
 		if _, err := w.Write([]byte("ok")); err != nil {
