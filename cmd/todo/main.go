@@ -39,7 +39,7 @@ func main() {
 		}
 	}()
 
-	loggerBase.Info("Server started at", "addr", addr)
+	loggerBase.Info("Server started at", "addr", addr, "pretty_url", "http://localhost"+addr)
 
 	quitChan := make(chan os.Signal, 1)
 	signal.Notify(quitChan, os.Interrupt, syscall.SIGTERM)
