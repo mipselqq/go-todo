@@ -10,6 +10,8 @@ import (
 )
 
 func TestHealthCheckResponds200(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
