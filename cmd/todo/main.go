@@ -13,13 +13,13 @@ import (
 )
 
 func main() {
-	logger_base := logging.NewLoggerBase()
-	logger := logger_base.With("component", "main")
+	loggerBase := logging.NewLoggerBase()
+	logger := loggerBase.With("component", "main")
 
 	mux := http.NewServeMux()
 
-	healthService := services.NewHealthCheckService(logger_base)
-	healthHandler := handlers.NewHealthHandler(logger_base, healthService)
+	healthService := services.NewHealthCheckService(loggerBase)
+	healthHandler := handlers.NewHealthHandler(loggerBase, healthService)
 	mux.HandleFunc("/health", healthHandler.HealthCheck)
 
 	addr := ":8080"
@@ -32,11 +32,11 @@ func main() {
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil {
-			logger_base.Error("Failed to listen and serve", "err", err)
+			loggerBase.Error("Failed to listen and serve", "err", err)
 			os.Exit(1)
 		}
 	}()
-	logger_base.Info("Server started at", "addr", addr)
+	loggerBase.Info("Server started at", "addr", addr)
 
 	quitChan := make(chan os.Signal, 1)
 	signal.Notify(quitChan, os.Interrupt, syscall.SIGTERM)

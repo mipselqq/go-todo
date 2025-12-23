@@ -11,9 +11,9 @@ type HealthHandler struct {
 	service *services.HealthCheckService
 }
 
-func NewHealthHandler(logger_base *slog.Logger, service *services.HealthCheckService) *HealthHandler {
+func NewHealthHandler(loggerBase *slog.Logger, service *services.HealthCheckService) *HealthHandler {
 	return &HealthHandler{
-		logger:  logger_base.With("component", "health_handler"),
+		logger:  loggerBase.With("component", "health_handler"),
 		service: service,
 	}
 }
