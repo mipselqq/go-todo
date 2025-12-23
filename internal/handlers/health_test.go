@@ -10,7 +10,7 @@ import (
 )
 
 func TestHealthCheckResponds200(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
 	healthService := services.NewHealthCheckService(logging.NewDiscardLogger())

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,11 +33,12 @@ func main() {
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err == http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && errors.Is(err, http.ErrServerClosed) {
 			loggerBase.Error("Failed to listen and serve", "err", err)
 			os.Exit(1)
 		}
 	}()
+
 	loggerBase.Info("Server started at", "addr", addr)
 
 	quitChan := make(chan os.Signal, 1)

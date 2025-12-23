@@ -7,3 +7,18 @@ run:
 
 linters:
   default: all
+  disable:
+    - noinlineerr # if err := ...; err != nil is ideomatic
+    - sloglint # Wierd suggestions
+    - testpackage # Incorrect
+    - mnd # Doesnt recognize 5*time.Second as acceptable
+    - wsl # Deprecated
+    - exhaustruct
+    - varnamelen # (w http.ResponseWriter ...) is acceptable in handlers no matter the scope,
+  settings:
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true # Why does this exist?
+        - name: exported # Meybe enable later
+          disabled: true

@@ -12,5 +12,6 @@ func NewHealthCheckService(loggerBase *slog.Logger) *HealthCheckService {
 
 func (s *HealthCheckService) HealthCheck() string {
 	s.logger.Debug("Health check passed")
+
 	return "ok"
 }
