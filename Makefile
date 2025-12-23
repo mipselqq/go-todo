@@ -6,7 +6,8 @@ build:
 run: build
 	./bin/todo
 
-test: go test ./...
+test:
+	go test ./...
 
 clean:
 	rm -rf ./bin
