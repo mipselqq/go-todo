@@ -9,6 +9,9 @@ run: build
 test:
 	go test ./...
 
+coverage:
+	go test -cover ./...
+
 lint: ./bin/golangci-lint
 	PATH=./bin:$$PATH ./bin/golangci-lint run ./...
 
