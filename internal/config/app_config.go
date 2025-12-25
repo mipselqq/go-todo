@@ -19,7 +19,7 @@ func NewAppConfigFromEnv(loggerBase *slog.Logger) *AppConfig {
 	var host string
 
 	if envHost == "" {
-		host = "localhost"
+		host = "0.0.0.0"
 		logger.Warn("APP_HOST not set, using default", "env:APP_HOST", envHost, "host", host)
 	} else {
 		host = envHost
