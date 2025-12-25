@@ -22,7 +22,7 @@ bin:
 	mkdir -p ./bin
 
 ./bin/golangci-lint: go.mod | bin
-	GOBIN=$(CURDIR)/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	GOBIN=$(CURDIR)/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 ./bin/gofumpt: go.mod | bin
 	GOBIN=$(CURDIR)/bin go install mvdan.cc/gofumpt@latest
 ./bin/goimports: go.mod | bin
