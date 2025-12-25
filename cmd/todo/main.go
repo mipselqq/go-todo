@@ -9,14 +9,18 @@ import (
 	"syscall"
 	"time"
 
+	"go-todo/internal/config"
 	"go-todo/internal/handlers"
 	"go-todo/internal/logging"
 	"go-todo/internal/services"
 )
 
 func main() {
-	loggerBase := logging.NewLoggerBase()
+	loggerConfig := config.NewLoggerConfigFromEnv()
+	loggerBase := logging.NewLoggerBase(loggerConfig)
 	logger := loggerBase.With("scope", "main")
+
+	appConfig := config.NewAppConfigFromEnv(loggerBase)
 
 	mux := http.NewServeMux()
 
@@ -24,9 +28,8 @@ func main() {
 	healthHandler := handlers.NewHealthHandler(loggerBase, healthService)
 	mux.HandleFunc("/health", healthHandler.HealthCheck)
 
-	addr := ":8080"
 	server := &http.Server{
-		Addr:         addr,
+		Addr:         appConfig.Addr,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
@@ -39,7 +42,7 @@ func main() {
 		}
 	}()
 
-	loggerBase.Info("Server started at", "addr", addr, "pretty_url", "http://localhost"+addr)
+	loggerBase.Info("Server started at", "addr", appConfig.Addr, "pretty_url", "http://"+appConfig.Addr)
 
 	quitChan := make(chan os.Signal, 1)
 	signal.Notify(quitChan, os.Interrupt, syscall.SIGTERM)
