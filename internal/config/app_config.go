@@ -15,6 +15,7 @@ func NewAppConfigFromEnv(loggerBase *slog.Logger) *AppConfig {
 	logger := loggerBase.With("scope", "app_config")
 
 	envHost := os.Getenv("APP_HOST")
+
 	var host string
 
 	if envHost == "" {
@@ -25,6 +26,7 @@ func NewAppConfigFromEnv(loggerBase *slog.Logger) *AppConfig {
 	}
 
 	envPort := os.Getenv("APP_PORT")
+
 	var port string
 
 	if envPort == "" {

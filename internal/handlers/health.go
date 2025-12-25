@@ -21,7 +21,6 @@ func NewHealthHandler(loggerBase *slog.Logger, service *services.HealthCheckServ
 
 func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	err := h.service.HealthCheck()
-
 	if err == nil {
 		w.WriteHeader(http.StatusOK)
 		h.logger.Debug("Sent 200 OK response for health check")
