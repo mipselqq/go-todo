@@ -59,9 +59,9 @@ func New(
 		}
 		return tok
 	})
-	boardsService := service.NewBoard(boardsRepo, columnsRepo, tasksRepo)
-	columnsService := service.NewColumn(columnsRepo, boardsRepo)
-	tasksService := service.NewTask(tasksRepo, boardsRepo, columnsRepo)
+	boardsService := service.NewBoard(boardsRepo)
+	columnsService := service.NewColumn(columnsRepo)
+	tasksService := service.NewTask(tasksRepo)
 
 	errorResponder := httpschema.MustNewErrorResponder(logger, service.TimeNowRFC3339Millis)
 	authHandler := handler.NewAuth(logger, authService, errorResponder)

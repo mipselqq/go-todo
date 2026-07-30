@@ -25,12 +25,14 @@ func TestTaskRepository_Create(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
 
 		validTask := testutil.ValidTask(column.ID)
 
 		task, err := r.Create(
 			context.Background(),
+			board.OwnerID,
+			board.ID,
 			column.ID,
 			validTask.Name,
 			validTask.Description,
@@ -73,6 +75,50 @@ func TestTaskRepository_Create(t *testing.T) {
 			t.Errorf("got stored task mismatch (-want +got):\n%s", diff)
 		}
 	})
+
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		missingColumnID := domain.NewColumnID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+			columnID *domain.ColumnID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+			{name: "Missing column", columnID: &missingColumnID},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+				task := testutil.ValidTask(column.ID)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				columnID := column.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.columnID != nil {
+					columnID = *tt.columnID
+				}
+
+				_, err := r.Create(context.Background(), callerID, boardID, columnID, task.Name, task.Description)
+				assertErrRowNotFound(t, err)
+
+				if got := ListTasksByColumnID(t, pool, column.ID); len(got) != 0 {
+					t.Errorf("got %d tasks, want 0", len(got))
+				}
+			})
+		}
+	})
 }
 
 func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
@@ -80,7 +126,7 @@ func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
 
 	testutil.TruncateAllTables(t, pool)
 
-	_, column := insertFixedUserBoardAndColumn(t, pool)
+	board, column := insertFixedUserBoardAndColumn(t, pool)
 
 	existing := testutil.ValidTask(column.ID)
 	CreateTask(t, pool, &existing)
@@ -89,6 +135,8 @@ func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
 
 	second, err := r.Create(
 		context.Background(),
+		board.OwnerID,
+		board.ID,
 		column.ID,
 		toCreate.Name,
 		toCreate.Description,
@@ -107,9 +155,9 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 	t.Run("Success empty", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
 
-		tasks, err := r.ListByColumnID(context.Background(), column.ID)
+		tasks, err := r.ListByColumnID(context.Background(), board.OwnerID, board.ID, column.ID)
 		if err != nil {
 			t.Fatalf("ListByColumnID() error = %v", err)
 		}
@@ -133,7 +181,7 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 		CreateTask(t, pool, &first)
 		CreateTask(t, pool, &otherColumnTask)
 
-		got, err := r.ListByColumnID(context.Background(), columnA.ID)
+		got, err := r.ListByColumnID(context.Background(), board.OwnerID, board.ID, columnA.ID)
 		if err != nil {
 			t.Fatalf("ListByColumnID() error = %v", err)
 		}
@@ -143,41 +191,43 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 			t.Errorf("ListByColumnID() mismatch (-want +got):\n%s", diff)
 		}
 	})
-}
 
-func TestTaskRepository_ListByBoardID(t *testing.T) {
-	pool, r := taskRepoPrelude(t)
-
-	t.Run("Success ordered by column position and task position", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
-
-		board, firstColumn := insertFixedUserBoardAndColumn(t, pool)
-		secondColumn := testutil.NewValidColumn(t, board.ID, "Done", 2)
-		CreateColumn(t, pool, &secondColumn)
-
-		otherBoard := testutil.ValidBoard()
-		CreateBoard(t, pool, &otherBoard)
-		otherBoardColumn := testutil.ValidColumn(otherBoard.ID)
-		CreateColumn(t, pool, &otherBoardColumn)
-
-		firstTask := testutil.ValidTask(firstColumn.ID)
-		secondTask := testutil.NewValidTask(t, firstColumn.ID, "Second", "second", 2)
-		thirdTask := testutil.ValidTask(secondColumn.ID)
-		otherBoardTask := testutil.ValidTask(otherBoardColumn.ID)
-
-		CreateTask(t, pool, &secondTask)
-		CreateTask(t, pool, &firstTask)
-		CreateTask(t, pool, &thirdTask)
-		CreateTask(t, pool, &otherBoardTask)
-
-		got, err := r.ListByBoardID(context.Background(), board.ID)
-		if err != nil {
-			t.Fatalf("ListByBoardID() error = %v", err)
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		missingColumnID := domain.NewColumnID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+			columnID *domain.ColumnID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+			{name: "Missing column", columnID: &missingColumnID},
 		}
 
-		want := []domain.Task{firstTask, secondTask, thirdTask}
-		if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("ListByBoardID() mismatch (-want +got):\n%s", diff)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				columnID := column.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.columnID != nil {
+					columnID = *tt.columnID
+				}
+
+				_, err := r.ListByColumnID(context.Background(), callerID, boardID, columnID)
+				assertErrRowNotFound(t, err)
+			})
 		}
 	})
 }
@@ -188,12 +238,12 @@ func TestTaskRepository_Get(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
 
 		created := testutil.ValidTask(column.ID)
 		CreateTask(t, pool, &created)
 
-		got, err := r.Get(context.Background(), created.ID)
+		got, err := r.Get(context.Background(), board.OwnerID, board.ID, column.ID, created.ID)
 		if err != nil {
 			t.Fatalf("Get() error = %v", err)
 		}
@@ -203,10 +253,54 @@ func TestTaskRepository_Get(t *testing.T) {
 	})
 
 	t.Run("Not found", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		anotherColumnID := domain.NewColumnID()
+		missingTaskID := domain.NewTaskID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+			columnID *domain.ColumnID
+			taskID   *domain.TaskID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+			{name: "Another column", columnID: &anotherColumnID},
+			{name: "Missing task", taskID: &missingTaskID},
+		}
 
-		_, err := r.Get(context.Background(), domain.NewTaskID())
-		assertErrRowNotFound(t, err)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
+				siblingColumn.ID = anotherColumnID
+				CreateColumn(t, pool, &siblingColumn)
+				task := testutil.ValidTask(column.ID)
+				CreateTask(t, pool, &task)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				columnID := column.ID
+				taskID := task.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.columnID != nil {
+					columnID = *tt.columnID
+				}
+				if tt.taskID != nil {
+					taskID = *tt.taskID
+				}
+
+				_, err := r.Get(context.Background(), callerID, boardID, columnID, taskID)
+				assertErrRowNotFound(t, err)
+			})
+		}
 	})
 }
 
@@ -251,7 +345,7 @@ func TestTaskRepository_Update(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
 
 		created := testutil.ValidTask(column.ID)
 		createdAtBeforeUpdate := time.Now().UTC()
@@ -261,7 +355,7 @@ func TestTaskRepository_Update(t *testing.T) {
 		CreateTask(t, pool, &created)
 
 		want := testutil.UpdateValidTask(t, &created, "Renamed", "Renamed description", testutil.Fixed5mFromNow())
-		updated, err := r.Update(context.Background(), column.ID, created.ID, &want.Name, &want.Description)
+		updated, err := r.Update(context.Background(), board.OwnerID, board.ID, column.ID, created.ID, &want.Name, &want.Description)
 		if err != nil {
 			t.Fatalf("Update() error = %v", err)
 		}
@@ -269,27 +363,81 @@ func TestTaskRepository_Update(t *testing.T) {
 		assertUpdatedTask(t, updated, want)
 	})
 
-	t.Run("Not found by task id", func(t *testing.T) {
+	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
+		task := testutil.ValidTask(column.ID)
+		CreateTask(t, pool, &task)
 
-		updatedName, _ := domain.NewTaskName("Renamed")
-		_, err := r.Update(context.Background(), column.ID, domain.NewTaskID(), &updatedName, nil)
-		assertErrRowNotFound(t, err)
+		got, err := r.Update(context.Background(), board.OwnerID, board.ID, column.ID, task.ID, nil, nil)
+		if err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		if diff := cmp.Diff(task, got, testutil.CmpAllowUnexported()); diff != "" {
+			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
+		}
 	})
 
-	t.Run("Not found by column id", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		anotherColumnID := domain.NewColumnID()
+		missingTaskID := domain.NewTaskID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+			columnID *domain.ColumnID
+			taskID   *domain.TaskID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+			{name: "Another column", columnID: &anotherColumnID},
+			{name: "Missing task", taskID: &missingTaskID},
+		}
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
 
-		created := testutil.ValidTask(column.ID)
-		CreateTask(t, pool, &created)
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
+				siblingColumn.ID = anotherColumnID
+				CreateColumn(t, pool, &siblingColumn)
+				task := testutil.ValidTask(column.ID)
+				CreateTask(t, pool, &task)
+				updatedName, err := domain.NewTaskName("Renamed")
+				if err != nil {
+					t.Fatalf("NewTaskName() error = %v", err)
+				}
 
-		want := testutil.UpdateValidTask(t, &created, "Renamed", "Renamed description", testutil.Fixed5mFromNow())
-		_, err := r.Update(context.Background(), domain.NewColumnID(), created.ID, &want.Name, &want.Description)
-		assertErrRowNotFound(t, err)
+				callerID := board.OwnerID
+				boardID := board.ID
+				columnID := column.ID
+				taskID := task.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.columnID != nil {
+					columnID = *tt.columnID
+				}
+				if tt.taskID != nil {
+					taskID = *tt.taskID
+				}
+
+				_, err = r.Update(context.Background(), callerID, boardID, columnID, taskID, &updatedName, nil)
+				assertErrRowNotFound(t, err)
+
+				stored := ListTasksByColumnID(t, pool, column.ID)
+				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
 	})
 }
 
@@ -311,7 +459,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 3)
 
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.ID, column.ID, first.ID, column.ID, targetPosition)
+		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, column.ID, first.ID, column.ID, targetPosition)
 		if err != nil {
 			t.Fatalf("Move() error = %v", err)
 		}
@@ -346,7 +494,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 1)
 
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.ID, column.ID, third.ID, column.ID, targetPosition)
+		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, column.ID, third.ID, column.ID, targetPosition)
 		if err != nil {
 			t.Fatalf("Move() error = %v", err)
 		}
@@ -379,7 +527,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 2)
 
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.ID, column.ID, second.ID, column.ID, targetPosition)
+		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, column.ID, second.ID, column.ID, targetPosition)
 		if err != nil {
 			t.Fatalf("Move() error = %v", err)
 		}
@@ -413,7 +561,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 4)
 
-		_, _, err := r.Move(context.Background(), board.ID, column.ID, second.ID, column.ID, targetPosition)
+		_, _, err := r.Move(context.Background(), board.OwnerID, board.ID, column.ID, second.ID, column.ID, targetPosition)
 		if !errors.Is(err, repository.ErrIndexOutOfBounds) {
 			t.Fatalf("Move() error = %v, want ErrIndexOutOfBounds", err)
 		}
@@ -449,7 +597,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 2)
 
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.ID, columnA.ID, a2.ID, columnB.ID, targetPosition)
+		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, columnA.ID, a2.ID, columnB.ID, targetPosition)
 		if err != nil {
 			t.Fatalf("Move() error = %v", err)
 		}
@@ -491,7 +639,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 2)
 
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.ID, columnA.ID, a1.ID, columnB.ID, targetPosition)
+		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, columnA.ID, a1.ID, columnB.ID, targetPosition)
 		if err != nil {
 			t.Fatalf("Move() error = %v", err)
 		}
@@ -530,7 +678,7 @@ func TestTaskRepository_Move(t *testing.T) {
 
 		targetPosition := testutil.NewValidTaskPosition(t, 3)
 
-		_, _, err := r.Move(context.Background(), board.ID, columnA.ID, a1.ID, columnB.ID, targetPosition)
+		_, _, err := r.Move(context.Background(), board.OwnerID, board.ID, columnA.ID, a1.ID, columnB.ID, targetPosition)
 		if !errors.Is(err, repository.ErrIndexOutOfBounds) {
 			t.Fatalf("Move() error = %v, want ErrIndexOutOfBounds", err)
 		}
@@ -548,29 +696,76 @@ func TestTaskRepository_Move(t *testing.T) {
 		assertTaskIDAndPosition(t, &gotB[0], b1.ID, 1)
 	})
 
-	t.Run("Not found by task id", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		anotherColumnID := domain.NewColumnID()
+		missingTaskID := domain.NewTaskID()
+		otherBoardColumnID := domain.NewColumnID()
+		tests := []struct {
+			name            string
+			callerID        *domain.UserID
+			boardID         *domain.BoardID
+			currentColumnID *domain.ColumnID
+			taskID          *domain.TaskID
+			targetColumnID  *domain.ColumnID
+			wantErr         error
+		}{
+			{name: "Another owner", callerID: &otherUserID, wantErr: repository.ErrRowNotFound},
+			{name: "Missing board", boardID: &missingBoardID, wantErr: repository.ErrRowNotFound},
+			{name: "Another source column", currentColumnID: &anotherColumnID, wantErr: repository.ErrRowNotFound},
+			{name: "Missing task", taskID: &missingTaskID, wantErr: repository.ErrRowNotFound},
+			{name: "Target column from another board", targetColumnID: &otherBoardColumnID, wantErr: repository.ErrTargetRowNotFound},
+		}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
 
-		targetPosition := testutil.NewValidTaskPosition(t, 1)
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+				targetColumn := testutil.NewValidColumn(t, board.ID, "Target", 2)
+				targetColumn.ID = anotherColumnID
+				CreateColumn(t, pool, &targetColumn)
+				otherBoard := testutil.ValidBoard()
+				CreateBoard(t, pool, &otherBoard)
+				otherBoardColumn := testutil.ValidColumn(otherBoard.ID)
+				otherBoardColumn.ID = otherBoardColumnID
+				CreateColumn(t, pool, &otherBoardColumn)
+				task := testutil.ValidTask(column.ID)
+				CreateTask(t, pool, &task)
 
-		_, _, err := r.Move(context.Background(), board.ID, column.ID, domain.NewTaskID(), column.ID, targetPosition)
-		assertErrRowNotFound(t, err)
-	})
+				callerID := board.OwnerID
+				boardID := board.ID
+				currentColumnID := column.ID
+				taskID := task.ID
+				targetColumnID := targetColumn.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.currentColumnID != nil {
+					currentColumnID = *tt.currentColumnID
+				}
+				if tt.taskID != nil {
+					taskID = *tt.taskID
+				}
+				if tt.targetColumnID != nil {
+					targetColumnID = *tt.targetColumnID
+				}
 
-	t.Run("Not found by board id", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+				_, _, err := r.Move(context.Background(), callerID, boardID, currentColumnID, taskID, targetColumnID, task.Position)
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("Move() error = %v, want %v", err, tt.wantErr)
+				}
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
-
-		created := testutil.ValidTask(column.ID)
-		CreateTask(t, pool, &created)
-
-		targetPosition := testutil.NewValidTaskPosition(t, 1)
-
-		_, _, err := r.Move(context.Background(), domain.NewBoardID(), column.ID, created.ID, column.ID, targetPosition)
-		assertErrRowNotFound(t, err)
+				stored := ListTasksByColumnID(t, pool, column.ID)
+				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
 	})
 }
 
@@ -590,7 +785,7 @@ func TestTaskRepository_Delete(t *testing.T) {
 		CreateTask(t, pool, &first)
 		CreateTask(t, pool, &second)
 
-		err := r.Delete(context.Background(), board.ID, column.ID, second.ID)
+		err := r.Delete(context.Background(), board.OwnerID, board.ID, column.ID, second.ID)
 		if err != nil {
 			t.Fatalf("Delete() error = %v", err)
 		}
@@ -604,25 +799,61 @@ func TestTaskRepository_Delete(t *testing.T) {
 		assertTaskIDAndPosition(t, &got[1], third.ID, 2)
 	})
 
-	t.Run("Not found by task id", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		anotherColumnID := domain.NewColumnID()
+		missingTaskID := domain.NewTaskID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+			columnID *domain.ColumnID
+			taskID   *domain.TaskID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+			{name: "Another column", columnID: &anotherColumnID},
+			{name: "Missing task", taskID: &missingTaskID},
+		}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
 
-		err := r.Delete(context.Background(), board.ID, column.ID, domain.NewTaskID())
-		assertErrRowNotFound(t, err)
-	})
+				board, column := insertFixedUserBoardAndColumn(t, pool)
+				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
+				siblingColumn.ID = anotherColumnID
+				CreateColumn(t, pool, &siblingColumn)
+				task := testutil.ValidTask(column.ID)
+				CreateTask(t, pool, &task)
 
-	t.Run("Not found by board id", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+				callerID := board.OwnerID
+				boardID := board.ID
+				columnID := column.ID
+				taskID := task.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+				if tt.columnID != nil {
+					columnID = *tt.columnID
+				}
+				if tt.taskID != nil {
+					taskID = *tt.taskID
+				}
 
-		_, column := insertFixedUserBoardAndColumn(t, pool)
+				err := r.Delete(context.Background(), callerID, boardID, columnID, taskID)
+				assertErrRowNotFound(t, err)
 
-		created := testutil.ValidTask(column.ID)
-		CreateTask(t, pool, &created)
-
-		err := r.Delete(context.Background(), domain.NewBoardID(), column.ID, created.ID)
-		assertErrRowNotFound(t, err)
+				stored := ListTasksByColumnID(t, pool, column.ID)
+				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
 	})
 }
 
@@ -655,7 +886,7 @@ func TestLockTaskColumns_BlocksSecondTransaction(t *testing.T) {
 	}
 
 	lockTaskColumns := func(tx pgx.Tx) error {
-		return repository.LockTaskColumns(context.Background(), tx, board.ID, column.ID)
+		return repository.LockTaskColumns(context.Background(), tx, board.OwnerID, board.ID, column.ID)
 	}
 
 	tx1 := beginTx("1")

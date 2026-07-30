@@ -87,7 +87,7 @@ func TestBoardRepository_Get(t *testing.T) {
 		}
 		CreateBoard(t, pool, &want)
 
-		got, err := r.Get(context.Background(), want.ID)
+		got, err := r.Get(context.Background(), userID, want.ID)
 		if err != nil {
 			t.Errorf("Get() error = %v", err)
 		}
@@ -112,10 +112,35 @@ func TestBoardRepository_Get(t *testing.T) {
 	})
 
 	t.Run("Not found", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+		}
 
-		_, err := r.Get(context.Background(), domain.NewBoardID())
-		assertErrRowNotFound(t, err)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board := insertFixedUserAndBoard(t, pool)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+
+				_, err := r.Get(context.Background(), callerID, boardID)
+				assertErrRowNotFound(t, err)
+			})
+		}
 	})
 }
 
@@ -237,7 +262,7 @@ func TestBoardRepository_Update(t *testing.T) {
 		CreateFixedUser(t, pool)
 		CreateBoard(t, pool, &validBoard)
 
-		got, err := r.Update(context.Background(), validBoard.ID, &updatedName, &updatedDescription)
+		got, err := r.Update(context.Background(), validBoard.OwnerID, validBoard.ID, &updatedName, &updatedDescription)
 		if err != nil {
 			t.Errorf("Update() error = %v", err)
 		}
@@ -250,7 +275,7 @@ func TestBoardRepository_Update(t *testing.T) {
 		CreateFixedUser(t, pool)
 		CreateBoard(t, pool, &validBoard)
 
-		got, err := r.Update(context.Background(), validBoard.ID, &updatedNameOnly, nil)
+		got, err := r.Update(context.Background(), validBoard.OwnerID, validBoard.ID, &updatedNameOnly, nil)
 		if err != nil {
 			t.Errorf("Update() error = %v", err)
 		}
@@ -263,20 +288,64 @@ func TestBoardRepository_Update(t *testing.T) {
 		CreateFixedUser(t, pool)
 		CreateBoard(t, pool, &validBoard)
 
-		got, err := r.Update(context.Background(), validBoard.ID, nil, &updatedDescriptionOnly)
+		got, err := r.Update(context.Background(), validBoard.OwnerID, validBoard.ID, nil, &updatedDescriptionOnly)
 		if err != nil {
 			t.Errorf("Update() error = %v", err)
 		}
 		assertUpdatedBoard(t, got, updatedDescriptionOnlyBoard)
 	})
 
-	t.Run("Not found when missing", func(t *testing.T) {
+	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
 		CreateFixedUser(t, pool)
+		CreateBoard(t, pool, &validBoard)
+		want := ListBoards(t, pool)[0]
 
-		_, err := r.Update(context.Background(), domain.NewBoardID(), &updatedName, &updatedDescription)
-		assertErrRowNotFound(t, err)
+		got, err := r.Update(context.Background(), validBoard.OwnerID, validBoard.ID, nil, nil)
+		if err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
+			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board := insertFixedUserAndBoard(t, pool)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+
+				_, err := r.Update(context.Background(), callerID, boardID, &updatedName, &updatedDescription)
+				assertErrRowNotFound(t, err)
+
+				stored := ListBoards(t, pool)
+				if diff := cmp.Diff([]domain.Board{board}, stored, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("stored boards mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
 	})
 }
 
@@ -288,7 +357,7 @@ func TestBoardRepository_Delete(t *testing.T) {
 
 		board := insertFixedUserAndBoard(t, pool)
 
-		err := r.Delete(context.Background(), board.ID)
+		err := r.Delete(context.Background(), board.OwnerID, board.ID)
 		if err != nil {
 			t.Errorf("Delete() error = %v", err)
 		}
@@ -299,13 +368,98 @@ func TestBoardRepository_Delete(t *testing.T) {
 		}
 	})
 
-	t.Run("Not found when missing", func(t *testing.T) {
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board := insertFixedUserAndBoard(t, pool)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+
+				err := r.Delete(context.Background(), callerID, boardID)
+				assertErrRowNotFound(t, err)
+
+				stored := ListBoards(t, pool)
+				if diff := cmp.Diff([]domain.Board{board}, stored, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("stored boards mismatch (-want +got):\n%s", diff)
+				}
+			})
+		}
+	})
+}
+
+func TestBoardRepository_GetAggregate(t *testing.T) {
+	pool, r := boardRepoPrelude(t)
+
+	t.Run("Success", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
+		board, column := insertFixedUserBoardAndColumn(t, pool)
+		task := testutil.ValidTask(column.ID)
+		CreateTask(t, pool, &task)
 
-		CreateFixedUser(t, pool)
+		gotBoard, gotColumns, gotTasks, err := r.GetAggregate(context.Background(), board.OwnerID, board.ID)
+		if err != nil {
+			t.Fatalf("GetAggregate() error = %v", err)
+		}
+		if diff := cmp.Diff(board, gotBoard, testutil.CmpAllowUnexported()); diff != "" {
+			t.Errorf("board mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff([]domain.Column{column}, gotColumns, testutil.CmpAllowUnexported()); diff != "" {
+			t.Errorf("columns mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff([]domain.Task{task}, gotTasks, testutil.CmpAllowUnexported()); diff != "" {
+			t.Errorf("tasks mismatch (-want +got):\n%s", diff)
+		}
+	})
 
-		err := r.Delete(context.Background(), domain.NewBoardID())
-		assertErrRowNotFound(t, err)
+	t.Run("Not found", func(t *testing.T) {
+		otherUserID := domain.NewUserID()
+		missingBoardID := domain.NewBoardID()
+		tests := []struct {
+			name     string
+			callerID *domain.UserID
+			boardID  *domain.BoardID
+		}{
+			{name: "Another owner", callerID: &otherUserID},
+			{name: "Missing board", boardID: &missingBoardID},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				testutil.TruncateAllTables(t, pool)
+				board := insertFixedUserAndBoard(t, pool)
+
+				callerID := board.OwnerID
+				boardID := board.ID
+				if tt.callerID != nil {
+					callerID = *tt.callerID
+				}
+				if tt.boardID != nil {
+					boardID = *tt.boardID
+				}
+
+				_, _, _, err := r.GetAggregate(context.Background(), callerID, boardID)
+				assertErrRowNotFound(t, err)
+			})
+		}
 	})
 }
 
