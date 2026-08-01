@@ -111,20 +111,20 @@ func TestColumnRepository_Create_AppendsPosition(t *testing.T) {
 
 	fixture := setupDefaultBoardHierarchy(t, pool)
 
-	secondColumn := testutil.NewValidColumn(t, fixture.board.ID, "Done", 2)
+	newColumn := testutil.NewValidColumn(t, fixture.board.ID, "Done", 3)
 
 	createdColumn, err := r.Create(
 		context.Background(),
 		fixture.board.OwnerID,
 		fixture.board.ID,
-		secondColumn.Name,
-		secondColumn.Description,
+		newColumn.Name,
+		newColumn.Description,
 	)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if createdColumn.Position.Int64() != 2 {
-		t.Errorf("got position %d, want 2", createdColumn.Position.Int64())
+	if createdColumn.Position.Int64() != 3 {
+		t.Errorf("got position %d, want 3", createdColumn.Position.Int64())
 	}
 }
 
@@ -182,17 +182,12 @@ func TestColumnRepository_ListByBoardID(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 		fixture := setupDefaultBoardHierarchy(t, pool)
 
-		firstColumn := fixture.column
-		secondColumn := testutil.NewValidColumn(t, fixture.board.ID, "In Progress", 2)
-
-		CreateColumn(t, pool, &secondColumn)
-
 		got, err := r.ListByBoardID(context.Background(), fixture.board.OwnerID, fixture.board.ID)
 		if err != nil {
 			t.Fatalf("ListByBoardID() error = %v", err)
 		}
 
-		want := []domain.Column{firstColumn, secondColumn}
+		want := []domain.Column{fixture.column, fixture.siblingColumn}
 		if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("ListByBoardID() mismatch (-want +got):\n%s", diff)
 		}
@@ -291,12 +286,18 @@ func TestColumnRepository_Update(t *testing.T) {
 		AssertTimestampPrecisionAtLeastMillis(t, pool, "columns", "created_at", "updated_at")
 
 		storedColumns := ListColumnsByBoardID(t, pool, want.BoardID)
-		if len(storedColumns) != 1 {
-			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 1", len(storedColumns))
+		if len(storedColumns) != 2 {
+			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 2", len(storedColumns))
 		}
-		if diff := cmp.Diff(got, storedColumns[0], testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("got stored column mismatch (-want +got):\n%s", diff)
+		for _, storedColumn := range storedColumns {
+			if storedColumn.ID == got.ID {
+				if diff := cmp.Diff(got, storedColumn, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("got stored column mismatch (-want +got):\n%s", diff)
+				}
+				return
+			}
 		}
+		t.Errorf("updated column %v not found", got.ID)
 	}
 
 	tests := []struct {
@@ -355,7 +356,7 @@ func TestColumnRepository_Update(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff([]domain.Column{fixture.column}, ListColumnsByBoardID(t, pool, fixture.board.ID), testutil.CmpAllowUnexported()); diff != "" {
+			if diff := cmp.Diff([]domain.Column{fixture.column, fixture.siblingColumn}, ListColumnsByBoardID(t, pool, fixture.board.ID), testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("stored columns mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -383,13 +384,18 @@ func TestColumnRepository_Update(t *testing.T) {
 			t.Errorf("got description %q, want %q", updated.Description, newDesc)
 		}
 		storedColumns := ListColumnsByBoardID(t, pool, column.BoardID)
-		if len(storedColumns) != 1 {
-			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 1", len(storedColumns))
+		if len(storedColumns) != 2 {
+			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 2", len(storedColumns))
 		}
-		storedColumn := storedColumns[0]
-		if storedColumn.Description != newDesc {
-			t.Errorf("stored description %q, want %q", storedColumn.Description, newDesc)
+		for _, storedColumn := range storedColumns {
+			if storedColumn.ID == column.ID {
+				if storedColumn.Description != newDesc {
+					t.Errorf("stored description %q, want %q", storedColumn.Description, newDesc)
+				}
+				return
+			}
 		}
+		t.Errorf("updated column %v not found", column.ID)
 	})
 
 	t.Run("Success no changes", func(t *testing.T) {
@@ -434,10 +440,9 @@ func TestColumnRepository_Move(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
 			firstColumn := fixture.column
-			secondColumn := testutil.NewValidColumn(t, fixture.board.ID, "In Progress", 2)
+			secondColumn := fixture.siblingColumn
 			thirdColumn := testutil.NewValidColumn(t, fixture.board.ID, "Done", 3)
 			CreateColumn(t, pool, &thirdColumn)
-			CreateColumn(t, pool, &secondColumn)
 
 			callerID := fixture.board.OwnerID
 			board := fixture.board
@@ -491,10 +496,9 @@ func TestColumnRepository_Move(t *testing.T) {
 
 		fixture := setupDefaultBoardHierarchy(t, pool)
 		board := fixture.board
-		secondColumn := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
+		secondColumn := fixture.siblingColumn
 		thirdColumn := testutil.NewValidColumn(t, board.ID, "Done", 3)
 
-		CreateColumn(t, pool, &secondColumn)
 		CreateColumn(t, pool, &thirdColumn)
 
 		destinationPosition := testutil.NewValidColumnPosition(t, 1)
@@ -521,9 +525,7 @@ func TestColumnRepository_Move(t *testing.T) {
 
 		fixture := setupDefaultBoardHierarchy(t, pool)
 		board := fixture.board
-		secondColumn := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
-
-		CreateColumn(t, pool, &secondColumn)
+		secondColumn := fixture.siblingColumn
 
 		destinationPosition := testutil.NewValidColumnPosition(t, 2)
 
@@ -548,10 +550,9 @@ func TestColumnRepository_Move(t *testing.T) {
 
 		fixture := setupDefaultBoardHierarchy(t, pool)
 		board := fixture.board
-		secondColumn := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
+		secondColumn := fixture.siblingColumn
 		thirdColumn := testutil.NewValidColumn(t, board.ID, "Done", 3)
 
-		CreateColumn(t, pool, &secondColumn)
 		CreateColumn(t, pool, &thirdColumn)
 
 		destinationPosition := testutil.NewValidColumnPosition(t, 4)
@@ -598,10 +599,9 @@ func TestColumnRepository_Delete(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
 			firstColumn := fixture.column
-			secondColumn := testutil.NewValidColumn(t, fixture.board.ID, "In Progress", 2)
+			secondColumn := fixture.siblingColumn
 			thirdColumn := testutil.NewValidColumn(t, fixture.board.ID, "Done", 3)
 			CreateColumn(t, pool, &thirdColumn)
-			CreateColumn(t, pool, &secondColumn)
 
 			callerID := fixture.board.OwnerID
 			board := fixture.board

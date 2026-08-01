@@ -45,7 +45,7 @@ func TestTaskRepository_Create(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
-			columnWithoutTasks := testutil.NewValidColumn(t, fixture.board.ID, "Empty", 2)
+			columnWithoutTasks := testutil.NewValidColumn(t, fixture.board.ID, "Empty", 3)
 			CreateColumn(t, pool, &columnWithoutTasks)
 			validTask := testutil.ValidTask(columnWithoutTasks.ID)
 
@@ -170,7 +170,7 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
-			columnWithoutTasks := testutil.NewValidColumn(t, fixture.board.ID, "Empty", 2)
+			columnWithoutTasks := testutil.NewValidColumn(t, fixture.board.ID, "Empty", 3)
 			CreateColumn(t, pool, &columnWithoutTasks)
 
 			callerID := fixture.board.OwnerID
@@ -211,12 +211,8 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 		fixture := setupDefaultBoardHierarchy(t, pool)
 		board := fixture.board
 		firstColumn := fixture.column
-		secondColumn := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 		secondTask := testutil.NewValidTask(t, firstColumn.ID, "Second", "second", 2)
-		secondColumnTask := testutil.NewValidTask(t, secondColumn.ID, "Other", "other", 1)
-		CreateColumn(t, pool, &secondColumn)
 		CreateTask(t, pool, &secondTask)
-		CreateTask(t, pool, &secondColumnTask)
 
 		got, err := r.ListByColumnID(context.Background(), board.OwnerID, board.ID, firstColumn.ID)
 		if err != nil {
@@ -262,17 +258,6 @@ func TestTaskRepository_Get(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
-			var siblingColumn domain.Column
-			var siblingTask domain.Task
-			if tt.useSiblingColumn || tt.useSiblingTask {
-				siblingColumn = testutil.NewValidColumn(t, fixture.board.ID, "Another", 2)
-				CreateColumn(t, pool, &siblingColumn)
-			}
-			if tt.useSiblingTask {
-				siblingTask = testutil.NewValidTask(t, siblingColumn.ID, "Another", "another", 1)
-				CreateTask(t, pool, &siblingTask)
-			}
-
 			callerID := fixture.board.OwnerID
 			board := fixture.board
 			column := fixture.column
@@ -290,7 +275,7 @@ func TestTaskRepository_Get(t *testing.T) {
 				board = fixture.nonexistentBoard
 			}
 			if tt.useSiblingColumn {
-				column = siblingColumn
+				column = fixture.siblingColumn
 			}
 			if tt.useUnrelatedColumn {
 				column = fixture.unrelatedColumn
@@ -299,7 +284,7 @@ func TestTaskRepository_Get(t *testing.T) {
 				column = fixture.nonexistentColumn
 			}
 			if tt.useSiblingTask {
-				task = siblingTask
+				task = fixture.siblingTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -385,16 +370,6 @@ func TestTaskRepository_Update(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
 			fixture := setupDefaultBoardHierarchy(t, pool)
-			var siblingColumn domain.Column
-			var siblingTask domain.Task
-			if tt.useSiblingColumn || tt.useSiblingTask {
-				siblingColumn = testutil.NewValidColumn(t, fixture.board.ID, "Another", 2)
-				CreateColumn(t, pool, &siblingColumn)
-			}
-			if tt.useSiblingTask {
-				siblingTask = testutil.NewValidTask(t, siblingColumn.ID, "Another", "another", 1)
-				CreateTask(t, pool, &siblingTask)
-			}
 			want := testutil.UpdateValidTask(t, &fixture.task, "Renamed", "Renamed description", fixture.task.UpdatedAt)
 
 			callerID := fixture.board.OwnerID
@@ -414,7 +389,7 @@ func TestTaskRepository_Update(t *testing.T) {
 				board = fixture.nonexistentBoard
 			}
 			if tt.useSiblingColumn {
-				column = siblingColumn
+				column = fixture.siblingColumn
 			}
 			if tt.useUnrelatedColumn {
 				column = fixture.unrelatedColumn
@@ -423,7 +398,7 @@ func TestTaskRepository_Update(t *testing.T) {
 				column = fixture.nonexistentColumn
 			}
 			if tt.useSiblingTask {
-				task = siblingTask
+				task = fixture.siblingTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -507,17 +482,6 @@ func TestTaskRepository_Move(t *testing.T) {
 			thirdTask := testutil.NewValidTask(t, fixture.column.ID, "Third", "third", 3)
 			CreateTask(t, pool, &thirdTask)
 			CreateTask(t, pool, &secondTask)
-			var siblingColumn domain.Column
-			var siblingTask domain.Task
-			if tt.useSiblingSourceColumn || tt.useSiblingTask {
-				siblingColumn = testutil.NewValidColumn(t, fixture.board.ID, "Another", 2)
-				CreateColumn(t, pool, &siblingColumn)
-			}
-			if tt.useSiblingTask {
-				siblingTask = testutil.NewValidTask(t, siblingColumn.ID, "Another", "another", 1)
-				CreateTask(t, pool, &siblingTask)
-			}
-
 			callerID := fixture.board.OwnerID
 			board := fixture.board
 			sourceColumn := fixture.column
@@ -536,7 +500,7 @@ func TestTaskRepository_Move(t *testing.T) {
 				board = fixture.nonexistentBoard
 			}
 			if tt.useSiblingSourceColumn {
-				sourceColumn = siblingColumn
+				sourceColumn = fixture.siblingColumn
 			}
 			if tt.useUnrelatedSourceColumn {
 				sourceColumn = fixture.unrelatedColumn
@@ -545,7 +509,7 @@ func TestTaskRepository_Move(t *testing.T) {
 				sourceColumn = fixture.nonexistentColumn
 			}
 			if tt.useSiblingTask {
-				task = siblingTask
+				task = fixture.siblingTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -695,19 +659,17 @@ func TestTaskRepository_Move(t *testing.T) {
 		board := fixture.board
 		sourceColumn := fixture.column
 		firstTask := fixture.task
-		destinationColumn := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
-		CreateColumn(t, pool, &destinationColumn)
+		destinationColumn := fixture.siblingColumn
 
 		secondTask := testutil.NewValidTask(t, sourceColumn.ID, "A2", "a2", 2)
 		thirdTask := testutil.NewValidTask(t, sourceColumn.ID, "A3", "a3", 3)
 
-		b1 := testutil.NewValidTask(t, destinationColumn.ID, "B1", "b1", 1)
-		b2 := testutil.NewValidTask(t, destinationColumn.ID, "B2", "b2", 2)
+		firstDestinationTask := fixture.siblingTask
+		secondDestinationTask := testutil.NewValidTask(t, destinationColumn.ID, "B2", "b2", 2)
 
 		CreateTask(t, pool, &thirdTask)
 		CreateTask(t, pool, &secondTask)
-		CreateTask(t, pool, &b2)
-		CreateTask(t, pool, &b1)
+		CreateTask(t, pool, &secondDestinationTask)
 
 		destinationPosition := testutil.NewValidTaskPosition(t, 2)
 
@@ -733,9 +695,9 @@ func TestTaskRepository_Move(t *testing.T) {
 		if len(destinationTasks) != 3 {
 			t.Fatalf("got %d tasks in destination column after move, want 3", len(destinationTasks))
 		}
-		assertTaskIDAndPosition(t, &destinationTasks[0], b1.ID, 1)
+		assertTaskIDAndPosition(t, &destinationTasks[0], firstDestinationTask.ID, 1)
 		assertTaskIDAndPosition(t, &destinationTasks[1], secondTask.ID, 2)
-		assertTaskIDAndPosition(t, &destinationTasks[2], b2.ID, 3)
+		assertTaskIDAndPosition(t, &destinationTasks[2], secondDestinationTask.ID, 3)
 	})
 
 	t.Run("Success move across columns to append", func(t *testing.T) {
@@ -745,12 +707,8 @@ func TestTaskRepository_Move(t *testing.T) {
 		board := fixture.board
 		sourceColumn := fixture.column
 		firstTask := fixture.task
-		destinationColumn := testutil.NewValidColumn(t, board.ID, "Done", 2)
-		CreateColumn(t, pool, &destinationColumn)
-
-		b1 := testutil.NewValidTask(t, destinationColumn.ID, "B1", "b1", 1)
-
-		CreateTask(t, pool, &b1)
+		destinationColumn := fixture.siblingColumn
+		firstDestinationTask := fixture.siblingTask
 
 		destinationPosition := testutil.NewValidTaskPosition(t, 2)
 
@@ -774,7 +732,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		if len(destinationTasks) != 2 {
 			t.Fatalf("got %d tasks in destination column after move, want 2", len(destinationTasks))
 		}
-		assertTaskIDAndPosition(t, &destinationTasks[0], b1.ID, 1)
+		assertTaskIDAndPosition(t, &destinationTasks[0], firstDestinationTask.ID, 1)
 		assertTaskIDAndPosition(t, &destinationTasks[1], firstTask.ID, 2)
 	})
 
@@ -785,12 +743,8 @@ func TestTaskRepository_Move(t *testing.T) {
 		board := fixture.board
 		sourceColumn := fixture.column
 		firstTask := fixture.task
-		destinationColumn := testutil.NewValidColumn(t, board.ID, "Done", 2)
-		CreateColumn(t, pool, &destinationColumn)
-
-		b1 := testutil.NewValidTask(t, destinationColumn.ID, "B1", "b1", 1)
-
-		CreateTask(t, pool, &b1)
+		destinationColumn := fixture.siblingColumn
+		firstDestinationTask := fixture.siblingTask
 
 		destinationPosition := testutil.NewValidTaskPosition(t, 3)
 
@@ -809,7 +763,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		if len(destinationTasks) != 1 {
 			t.Fatalf("got %d tasks in destination column after failed move, want 1", len(destinationTasks))
 		}
-		assertTaskIDAndPosition(t, &destinationTasks[0], b1.ID, 1)
+		assertTaskIDAndPosition(t, &destinationTasks[0], firstDestinationTask.ID, 1)
 	})
 }
 
@@ -849,17 +803,6 @@ func TestTaskRepository_Delete(t *testing.T) {
 			thirdTask := testutil.NewValidTask(t, fixture.column.ID, "Third", "third", 3)
 			CreateTask(t, pool, &thirdTask)
 			CreateTask(t, pool, &secondTask)
-			var siblingColumn domain.Column
-			var siblingTask domain.Task
-			if tt.useSiblingColumn || tt.useSiblingTask {
-				siblingColumn = testutil.NewValidColumn(t, fixture.board.ID, "Another", 2)
-				CreateColumn(t, pool, &siblingColumn)
-			}
-			if tt.useSiblingTask {
-				siblingTask = testutil.NewValidTask(t, siblingColumn.ID, "Another", "another", 1)
-				CreateTask(t, pool, &siblingTask)
-			}
-
 			callerID := fixture.board.OwnerID
 			board := fixture.board
 			column := fixture.column
@@ -877,7 +820,7 @@ func TestTaskRepository_Delete(t *testing.T) {
 				board = fixture.nonexistentBoard
 			}
 			if tt.useSiblingColumn {
-				column = siblingColumn
+				column = fixture.siblingColumn
 			}
 			if tt.useUnrelatedColumn {
 				column = fixture.unrelatedColumn
@@ -886,7 +829,7 @@ func TestTaskRepository_Delete(t *testing.T) {
 				column = fixture.nonexistentColumn
 			}
 			if tt.useSiblingTask {
-				task = siblingTask
+				task = fixture.siblingTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask

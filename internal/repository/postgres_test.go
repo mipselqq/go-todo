@@ -181,6 +181,8 @@ type boardHierarchyFixture struct {
 	board             domain.Board
 	column            domain.Column
 	task              domain.Task
+	siblingColumn     domain.Column
+	siblingTask       domain.Task
 	unrelatedBoard    domain.Board
 	unrelatedColumn   domain.Column
 	unrelatedTask     domain.Task
@@ -195,6 +197,8 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
+	siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
+	siblingTask := testutil.ValidTask(siblingColumn.ID)
 
 	unrelatedBoard := testutil.ValidBoardForOwner(domain.NewUserID())
 	unrelatedColumn := testutil.ValidColumn(unrelatedBoard.ID)
@@ -205,6 +209,8 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 	CreateBoard(t, pool, &board)
 	CreateColumn(t, pool, &column)
 	CreateTask(t, pool, &task)
+	CreateColumn(t, pool, &siblingColumn)
+	CreateTask(t, pool, &siblingTask)
 	CreateBoard(t, pool, &unrelatedBoard)
 	CreateColumn(t, pool, &unrelatedColumn)
 	CreateTask(t, pool, &unrelatedTask)
@@ -217,6 +223,8 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 		board:             board,
 		column:            column,
 		task:              task,
+		siblingColumn:     siblingColumn,
+		siblingTask:       siblingTask,
 		unrelatedBoard:    unrelatedBoard,
 		unrelatedColumn:   unrelatedColumn,
 		unrelatedTask:     unrelatedTask,

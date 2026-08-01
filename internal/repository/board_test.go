@@ -417,10 +417,10 @@ func TestBoardRepository_GetAggregate(t *testing.T) {
 				if diff := cmp.Diff(fixture.board, gotBoard, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("board mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff([]domain.Column{fixture.column}, gotColumns, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff([]domain.Column{fixture.column, fixture.siblingColumn}, gotColumns, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("columns mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff([]domain.Task{fixture.task}, gotTasks, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff([]domain.Task{fixture.task, fixture.siblingTask}, gotTasks, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("tasks mismatch (-want +got):\n%s", diff)
 				}
 			}
