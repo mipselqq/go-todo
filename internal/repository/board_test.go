@@ -24,17 +24,17 @@ func TestBoardRepository_Create(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
-		hierarchy := insertBoardHierarchy(t, pool)
+		fixture := setupDefaultBoardHierarchy(t, pool)
 
-		board, err := r.Create(context.Background(), hierarchy.board.OwnerID, boardName, boardDescription)
+		board, err := r.Create(context.Background(), fixture.board.OwnerID, boardName, boardDescription)
 		if err != nil {
 			t.Errorf("Create() error = %v", err)
 		}
 		if board.ID.IsNil() {
 			t.Errorf("got empty board ID, want generated ID")
 		}
-		if board.OwnerID != hierarchy.board.OwnerID {
-			t.Errorf("got owner ID %q, want %q", board.OwnerID, hierarchy.board.OwnerID)
+		if board.OwnerID != fixture.board.OwnerID {
+			t.Errorf("got owner ID %q, want %q", board.OwnerID, fixture.board.OwnerID)
 		}
 		if board.Name != boardName {
 			t.Errorf("got name %q, want %q", board.Name, boardName)
@@ -69,46 +69,46 @@ func TestBoardRepository_Get(t *testing.T) {
 	pool, r := boardRepoPrelude(t)
 
 	tests := []struct {
-		name            string
-		useAnotherOwner bool
-		useMissingOwner bool
-		useAnotherBoard bool
-		useMissingBoard bool
-		wantErr         error
+		name              string
+		useUnrelatedOwner bool
+		useMissingOwner   bool
+		useUnrelatedBoard bool
+		useMissingBoard   bool
+		wantErr           error
 	}{
 		{name: "Success"},
-		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated owner", useUnrelatedOwner: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
-		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated board", useUnrelatedBoard: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
-			hierarchy := insertBoardHierarchy(t, pool)
+			fixture := setupDefaultBoardHierarchy(t, pool)
 
-			callerID := hierarchy.board.OwnerID
-			targetBoard := hierarchy.board
-			if tt.useAnotherOwner {
-				callerID = hierarchy.anotherBoard.OwnerID
+			callerID := fixture.board.OwnerID
+			board := fixture.board
+			if tt.useUnrelatedOwner {
+				callerID = fixture.unrelatedBoard.OwnerID
 			}
 			if tt.useMissingOwner {
-				callerID = hierarchy.missingBoard.OwnerID
+				callerID = fixture.nonexistentBoard.OwnerID
 			}
-			if tt.useAnotherBoard {
-				targetBoard = hierarchy.anotherBoard
+			if tt.useUnrelatedBoard {
+				board = fixture.unrelatedBoard
 			}
 			if tt.useMissingBoard {
-				targetBoard = hierarchy.missingBoard
+				board = fixture.nonexistentBoard
 			}
 
-			got, err := r.Get(context.Background(), callerID, targetBoard.ID)
+			got, err := r.Get(context.Background(), callerID, board.ID)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Get() error = %v, want %v", err, tt.wantErr)
 			}
 			if tt.wantErr == nil {
-				if diff := cmp.Diff(hierarchy.board, got, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff(fixture.board, got, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("Get() mismatch (-want +got):\n%s", diff)
 				}
 			}
@@ -120,28 +120,28 @@ func TestBoardRepository_ListByOwnerID(t *testing.T) {
 	pool, r := boardRepoPrelude(t)
 
 	tests := []struct {
-		name           string
-		useAnotherUser bool
-		useMissingUser bool
+		name             string
+		useUnrelatedUser bool
+		useMissingUser   bool
 	}{
 		{name: "Success"},
-		{name: "Another user", useAnotherUser: true},
+		{name: "Unrelated user", useUnrelatedUser: true},
 		{name: "Missing user", useMissingUser: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
-			hierarchy := insertBoardHierarchy(t, pool)
+			fixture := setupDefaultBoardHierarchy(t, pool)
 
-			ownerID := hierarchy.board.OwnerID
-			want := []domain.Board{hierarchy.board}
-			if tt.useAnotherUser {
-				ownerID = hierarchy.anotherBoard.OwnerID
-				want = []domain.Board{hierarchy.anotherBoard}
+			ownerID := fixture.board.OwnerID
+			want := []domain.Board{fixture.board}
+			if tt.useUnrelatedUser {
+				ownerID = fixture.unrelatedBoard.OwnerID
+				want = []domain.Board{fixture.unrelatedBoard}
 			}
 			if tt.useMissingUser {
-				ownerID = hierarchy.missingBoard.OwnerID
+				ownerID = fixture.nonexistentBoard.OwnerID
 				want = nil
 			}
 
@@ -157,19 +157,19 @@ func TestBoardRepository_ListByOwnerID(t *testing.T) {
 
 	t.Run("Success ordered and filtered by owner", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
-		hierarchy := insertBoardHierarchy(t, pool)
+		fixture := setupDefaultBoardHierarchy(t, pool)
 
-		laterBoard := testutil.ValidBoardForOwner(hierarchy.board.OwnerID)
-		laterBoard.CreatedAt = testutil.Fixed5mFromNow()
-		laterBoard.UpdatedAt = testutil.Fixed5mFromNow()
-		CreateBoard(t, pool, &laterBoard)
+		newerBoard := testutil.ValidBoardForOwner(fixture.board.OwnerID)
+		newerBoard.CreatedAt = testutil.Fixed5mFromNow()
+		newerBoard.UpdatedAt = testutil.Fixed5mFromNow()
+		CreateBoard(t, pool, &newerBoard)
 
-		got, err := r.ListByOwnerID(context.Background(), hierarchy.board.OwnerID)
+		got, err := r.ListByOwnerID(context.Background(), fixture.board.OwnerID)
 		if err != nil {
 			t.Fatalf("ListByOwnerID() error = %v", err)
 		}
 
-		want := []domain.Board{hierarchy.board, laterBoard}
+		want := []domain.Board{fixture.board, newerBoard}
 		if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("ListByOwnerID() mismatch (-want +got):\n%s", diff)
 		}
@@ -214,42 +214,42 @@ func TestBoardRepository_Update(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		useAnotherOwner bool
-		useMissingOwner bool
-		useAnotherBoard bool
-		useMissingBoard bool
-		wantErr         error
+		name              string
+		useUnrelatedOwner bool
+		useMissingOwner   bool
+		useUnrelatedBoard bool
+		useMissingBoard   bool
+		wantErr           error
 	}{
 		{name: "Success"},
-		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated owner", useUnrelatedOwner: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
-		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated board", useUnrelatedBoard: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
-			hierarchy := insertBoardHierarchy(t, pool)
+			fixture := setupDefaultBoardHierarchy(t, pool)
 
-			callerID := hierarchy.board.OwnerID
-			targetBoard := hierarchy.board
-			if tt.useAnotherOwner {
-				callerID = hierarchy.anotherBoard.OwnerID
+			callerID := fixture.board.OwnerID
+			board := fixture.board
+			if tt.useUnrelatedOwner {
+				callerID = fixture.unrelatedBoard.OwnerID
 			}
 			if tt.useMissingOwner {
-				callerID = hierarchy.missingBoard.OwnerID
+				callerID = fixture.nonexistentBoard.OwnerID
 			}
-			if tt.useAnotherBoard {
-				targetBoard = hierarchy.anotherBoard
+			if tt.useUnrelatedBoard {
+				board = fixture.unrelatedBoard
 			}
 			if tt.useMissingBoard {
-				targetBoard = hierarchy.missingBoard
+				board = fixture.nonexistentBoard
 			}
 
-			want := testutil.UpdateValidBoard(t, &hierarchy.board, "Updated Board Name", "Updated Board Description", hierarchy.board.UpdatedAt)
-			got, err := r.Update(context.Background(), callerID, targetBoard.ID, &want.Name, &want.Description)
+			want := testutil.UpdateValidBoard(t, &fixture.board, "Updated Board Name", "Updated Board Description", fixture.board.UpdatedAt)
+			got, err := r.Update(context.Background(), callerID, board.ID, &want.Name, &want.Description)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Update() error = %v, want %v", err, tt.wantErr)
 			}
@@ -258,7 +258,7 @@ func TestBoardRepository_Update(t *testing.T) {
 				return
 			}
 
-			if diff := cmp.Diff([]domain.Board{hierarchy.board, hierarchy.anotherBoard}, ListBoards(t, pool), testutil.CmpAllowUnexported()); diff != "" {
+			if diff := cmp.Diff([]domain.Board{fixture.board, fixture.unrelatedBoard}, ListBoards(t, pool), testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("stored boards mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -267,16 +267,16 @@ func TestBoardRepository_Update(t *testing.T) {
 	t.Run("Success partial name only", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		hierarchy := insertBoardHierarchy(t, pool)
+		fixture := setupDefaultBoardHierarchy(t, pool)
 		want := testutil.UpdateValidBoard(
 			t,
-			&hierarchy.board,
+			&fixture.board,
 			"Updated Board Name Only",
-			hierarchy.board.Description.String(),
-			hierarchy.board.UpdatedAt,
+			fixture.board.Description.String(),
+			fixture.board.UpdatedAt,
 		)
 
-		got, err := r.Update(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID, &want.Name, nil)
+		got, err := r.Update(context.Background(), fixture.board.OwnerID, fixture.board.ID, &want.Name, nil)
 		if err != nil {
 			t.Errorf("Update() error = %v", err)
 		}
@@ -286,16 +286,16 @@ func TestBoardRepository_Update(t *testing.T) {
 	t.Run("Success partial description only", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		hierarchy := insertBoardHierarchy(t, pool)
+		fixture := setupDefaultBoardHierarchy(t, pool)
 		want := testutil.UpdateValidBoard(
 			t,
-			&hierarchy.board,
-			hierarchy.board.Name.String(),
+			&fixture.board,
+			fixture.board.Name.String(),
 			"Updated Board Description Only",
-			hierarchy.board.UpdatedAt,
+			fixture.board.UpdatedAt,
 		)
 
-		got, err := r.Update(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID, nil, &want.Description)
+		got, err := r.Update(context.Background(), fixture.board.OwnerID, fixture.board.ID, nil, &want.Description)
 		if err != nil {
 			t.Errorf("Update() error = %v", err)
 		}
@@ -305,13 +305,13 @@ func TestBoardRepository_Update(t *testing.T) {
 	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		hierarchy := insertBoardHierarchy(t, pool)
+		fixture := setupDefaultBoardHierarchy(t, pool)
 
-		got, err := r.Update(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID, nil, nil)
+		got, err := r.Update(context.Background(), fixture.board.OwnerID, fixture.board.ID, nil, nil)
 		if err != nil {
 			t.Fatalf("Update() error = %v", err)
 		}
-		if diff := cmp.Diff(hierarchy.board, got, testutil.CmpAllowUnexported()); diff != "" {
+		if diff := cmp.Diff(fixture.board, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -321,48 +321,48 @@ func TestBoardRepository_Delete(t *testing.T) {
 	pool, r := boardRepoPrelude(t)
 
 	tests := []struct {
-		name            string
-		useAnotherOwner bool
-		useMissingOwner bool
-		useAnotherBoard bool
-		useMissingBoard bool
-		wantErr         error
+		name              string
+		useUnrelatedOwner bool
+		useMissingOwner   bool
+		useUnrelatedBoard bool
+		useMissingBoard   bool
+		wantErr           error
 	}{
 		{name: "Success"},
-		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated owner", useUnrelatedOwner: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
-		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated board", useUnrelatedBoard: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
-			hierarchy := insertBoardHierarchy(t, pool)
+			fixture := setupDefaultBoardHierarchy(t, pool)
 
-			callerID := hierarchy.board.OwnerID
-			targetBoard := hierarchy.board
-			if tt.useAnotherOwner {
-				callerID = hierarchy.anotherBoard.OwnerID
+			callerID := fixture.board.OwnerID
+			board := fixture.board
+			if tt.useUnrelatedOwner {
+				callerID = fixture.unrelatedBoard.OwnerID
 			}
 			if tt.useMissingOwner {
-				callerID = hierarchy.missingBoard.OwnerID
+				callerID = fixture.nonexistentBoard.OwnerID
 			}
-			if tt.useAnotherBoard {
-				targetBoard = hierarchy.anotherBoard
+			if tt.useUnrelatedBoard {
+				board = fixture.unrelatedBoard
 			}
 			if tt.useMissingBoard {
-				targetBoard = hierarchy.missingBoard
+				board = fixture.nonexistentBoard
 			}
 
-			err := r.Delete(context.Background(), callerID, targetBoard.ID)
+			err := r.Delete(context.Background(), callerID, board.ID)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Delete() error = %v, want %v", err, tt.wantErr)
 			}
 
-			want := []domain.Board{hierarchy.board, hierarchy.anotherBoard}
+			want := []domain.Board{fixture.board, fixture.unrelatedBoard}
 			if tt.wantErr == nil {
-				want = []domain.Board{hierarchy.anotherBoard}
+				want = []domain.Board{fixture.unrelatedBoard}
 			}
 			if diff := cmp.Diff(want, ListBoards(t, pool), testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("stored boards mismatch (-want +got):\n%s", diff)
@@ -375,52 +375,52 @@ func TestBoardRepository_GetAggregate(t *testing.T) {
 	pool, r := boardRepoPrelude(t)
 
 	tests := []struct {
-		name            string
-		useAnotherOwner bool
-		useMissingOwner bool
-		useAnotherBoard bool
-		useMissingBoard bool
-		wantErr         error
+		name              string
+		useUnrelatedOwner bool
+		useMissingOwner   bool
+		useUnrelatedBoard bool
+		useMissingBoard   bool
+		wantErr           error
 	}{
 		{name: "Success"},
-		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated owner", useUnrelatedOwner: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
-		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Unrelated board", useUnrelatedBoard: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.TruncateAllTables(t, pool)
-			hierarchy := insertBoardHierarchy(t, pool)
+			fixture := setupDefaultBoardHierarchy(t, pool)
 
-			callerID := hierarchy.board.OwnerID
-			targetBoard := hierarchy.board
-			if tt.useAnotherOwner {
-				callerID = hierarchy.anotherBoard.OwnerID
+			callerID := fixture.board.OwnerID
+			board := fixture.board
+			if tt.useUnrelatedOwner {
+				callerID = fixture.unrelatedBoard.OwnerID
 			}
 			if tt.useMissingOwner {
-				callerID = hierarchy.missingBoard.OwnerID
+				callerID = fixture.nonexistentBoard.OwnerID
 			}
-			if tt.useAnotherBoard {
-				targetBoard = hierarchy.anotherBoard
+			if tt.useUnrelatedBoard {
+				board = fixture.unrelatedBoard
 			}
 			if tt.useMissingBoard {
-				targetBoard = hierarchy.missingBoard
+				board = fixture.nonexistentBoard
 			}
 
-			gotBoard, gotColumns, gotTasks, err := r.GetAggregate(context.Background(), callerID, targetBoard.ID)
+			gotBoard, gotColumns, gotTasks, err := r.GetAggregate(context.Background(), callerID, board.ID)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("GetAggregate() error = %v, want %v", err, tt.wantErr)
 			}
 			if tt.wantErr == nil {
-				if diff := cmp.Diff(hierarchy.board, gotBoard, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff(fixture.board, gotBoard, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("board mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff([]domain.Column{hierarchy.column}, gotColumns, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff([]domain.Column{fixture.column}, gotColumns, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("columns mismatch (-want +got):\n%s", diff)
 				}
-				if diff := cmp.Diff([]domain.Task{hierarchy.task}, gotTasks, testutil.CmpAllowUnexported()); diff != "" {
+				if diff := cmp.Diff([]domain.Task{fixture.task}, gotTasks, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("tasks mismatch (-want +got):\n%s", diff)
 				}
 			}

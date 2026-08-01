@@ -177,52 +177,52 @@ func CreateTask(t *testing.T, pool *pgxpool.Pool, task *domain.Task) {
 	}
 }
 
-type testBoardHierarchy struct {
-	board         domain.Board
-	column        domain.Column
-	task          domain.Task
-	anotherBoard  domain.Board
-	anotherColumn domain.Column
-	anotherTask   domain.Task
-	missingBoard  domain.Board
-	missingColumn domain.Column
-	missingTask   domain.Task
+type boardHierarchyFixture struct {
+	board             domain.Board
+	column            domain.Column
+	task              domain.Task
+	unrelatedBoard    domain.Board
+	unrelatedColumn   domain.Column
+	unrelatedTask     domain.Task
+	nonexistentBoard  domain.Board
+	nonexistentColumn domain.Column
+	nonexistentTask   domain.Task
 }
 
-func insertBoardHierarchy(t *testing.T, pool *pgxpool.Pool) testBoardHierarchy {
+func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchyFixture {
 	t.Helper()
 
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
 
-	anotherBoard := testutil.ValidBoardForOwner(domain.NewUserID())
-	anotherColumn := testutil.ValidColumn(anotherBoard.ID)
-	anotherTask := testutil.ValidTask(anotherColumn.ID)
+	unrelatedBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	unrelatedColumn := testutil.ValidColumn(unrelatedBoard.ID)
+	unrelatedTask := testutil.ValidTask(unrelatedColumn.ID)
 
 	CreateFixedUser(t, pool)
-	insertAnotherUser(t, pool, anotherBoard.OwnerID)
+	insertUnrelatedUser(t, pool, unrelatedBoard.OwnerID)
 	CreateBoard(t, pool, &board)
 	CreateColumn(t, pool, &column)
 	CreateTask(t, pool, &task)
-	CreateBoard(t, pool, &anotherBoard)
-	CreateColumn(t, pool, &anotherColumn)
-	CreateTask(t, pool, &anotherTask)
+	CreateBoard(t, pool, &unrelatedBoard)
+	CreateColumn(t, pool, &unrelatedColumn)
+	CreateTask(t, pool, &unrelatedTask)
 
-	missingBoard := testutil.ValidBoardForOwner(domain.NewUserID())
-	missingColumn := testutil.ValidColumn(missingBoard.ID)
-	missingTask := testutil.ValidTask(missingColumn.ID)
+	nonexistentBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	nonexistentColumn := testutil.ValidColumn(nonexistentBoard.ID)
+	nonexistentTask := testutil.ValidTask(nonexistentColumn.ID)
 
-	return testBoardHierarchy{
-		board:         board,
-		column:        column,
-		task:          task,
-		anotherBoard:  anotherBoard,
-		anotherColumn: anotherColumn,
-		anotherTask:   anotherTask,
-		missingBoard:  missingBoard,
-		missingColumn: missingColumn,
-		missingTask:   missingTask,
+	return boardHierarchyFixture{
+		board:             board,
+		column:            column,
+		task:              task,
+		unrelatedBoard:    unrelatedBoard,
+		unrelatedColumn:   unrelatedColumn,
+		unrelatedTask:     unrelatedTask,
+		nonexistentBoard:  nonexistentBoard,
+		nonexistentColumn: nonexistentColumn,
+		nonexistentTask:   nonexistentTask,
 	}
 }
 
@@ -262,7 +262,7 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	return tasks
 }
 
-func insertAnotherUser(t *testing.T, pool *pgxpool.Pool, userID domain.UserID) {
+func insertUnrelatedUser(t *testing.T, pool *pgxpool.Pool, userID domain.UserID) {
 	t.Helper()
 
 	email, err := domain.NewEmail("another@example.com")
