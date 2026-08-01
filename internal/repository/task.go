@@ -302,7 +302,9 @@ func (r *PGTask) Update(
 			name = COALESCE($5, t.name),
 			description = COALESCE($6, t.description),
 			updated_at = CASE
-				WHEN $5 IS NULL AND $6 IS NULL THEN t.updated_at
+				WHEN $5 IS NULL
+				 AND $6 IS NULL
+				THEN t.updated_at
 				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
 			END
 		FROM columns c

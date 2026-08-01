@@ -27,7 +27,9 @@ func NewPGUser(pgPool *pgxpool.Pool) *PGUser {
 const pgUniqueViolation = "23505"
 
 func (r *PGUser) Create(ctx context.Context, email domain.Email, hash domain.PasswordHash) error {
-	const query = `INSERT INTO users (email, password_hash) VALUES ($1, $2)`
+	const query = `
+		INSERT INTO users (email, password_hash)
+		VALUES ($1, $2)`
 
 	_, err := r.pgPool.Exec(ctx, query, email, hash.RevealSecret())
 	if err == nil {
@@ -43,7 +45,10 @@ func (r *PGUser) Create(ctx context.Context, email domain.Email, hash domain.Pas
 }
 
 func (r *PGUser) GetByEmail(ctx context.Context, email domain.Email) (domain.User, error) {
-	const query = `SELECT id, email, password_hash, telegram_chat_id, telegram_username FROM users WHERE email = $1`
+	const query = `
+		SELECT id, email, password_hash, telegram_chat_id, telegram_username
+		FROM users
+		WHERE email = $1`
 
 	user, err := ScanUser(r.pgPool.QueryRow(ctx, query, email))
 	if err != nil {
@@ -57,7 +62,11 @@ func (r *PGUser) GetByEmail(ctx context.Context, email domain.Email) (domain.Use
 }
 
 func (r *PGUser) UpdateTelegramInfo(ctx context.Context, userID domain.UserID, chatID domain.TelegramChatID, username domain.TelegramUsername) error {
-	const query = `UPDATE users SET telegram_chat_id = $1, telegram_username = $2 WHERE id = $3`
+	const query = `
+		UPDATE users
+		SET telegram_chat_id = $1,
+			telegram_username = $2
+		WHERE id = $3`
 
 	status, err := r.pgPool.Exec(ctx, query, chatID, username, userID)
 	if err != nil {

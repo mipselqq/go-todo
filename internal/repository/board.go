@@ -20,7 +20,8 @@ type PGBoard struct {
 const boardSelectQuery = `
 	SELECT id, owner_id, name, description, created_at, updated_at
 	FROM boards
-	WHERE id = @board_id AND owner_id = @caller_id`
+	WHERE id = @board_id
+	  AND owner_id = @caller_id`
 
 func NewPGBoard(pgPool *pgxpool.Pool) *PGBoard {
 	return &PGBoard{
@@ -29,7 +30,10 @@ func NewPGBoard(pgPool *pgxpool.Pool) *PGBoard {
 }
 
 func (r *PGBoard) Create(ctx context.Context, ownerID domain.UserID, name domain.BoardName, description domain.BoardDescription) (domain.Board, error) {
-	const query = `INSERT INTO boards (owner_id, name, description) VALUES ($1, $2, $3) RETURNING id, owner_id, name, description, created_at, updated_at`
+	const query = `
+		INSERT INTO boards (owner_id, name, description)
+		VALUES ($1, $2, $3)
+		RETURNING id, owner_id, name, description, created_at, updated_at`
 
 	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, ownerID, name, description))
 	if err != nil {
@@ -64,7 +68,8 @@ func (r *PGBoard) GetAggregate(
 		FROM boards b
 		JOIN columns c ON c.board_id = b.id
 		JOIN tasks t ON t.column_id = c.id
-		WHERE b.id = @board_id AND b.owner_id = @caller_id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
 		ORDER BY c.position ASC, t.position ASC`
 
 	args := pgx.NamedArgs{
@@ -179,10 +184,13 @@ func (r *PGBoard) Update(
 			name = COALESCE($1, name),
 			description = COALESCE($2, description),
 			updated_at = CASE
-				WHEN $1 IS NULL AND $2 IS NULL THEN updated_at
+				WHEN $1 IS NULL
+				 AND $2 IS NULL
+				THEN updated_at
 				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
 			END
-		WHERE id = $3 AND owner_id = $4
+		WHERE id = $3
+		  AND owner_id = $4
 		RETURNING id, owner_id, name, description, created_at, updated_at`
 
 	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, name, description, boardID, callerID))
@@ -197,7 +205,10 @@ func (r *PGBoard) Update(
 }
 
 func (r *PGBoard) Delete(ctx context.Context, callerID domain.UserID, boardID domain.BoardID) error {
-	const query = `DELETE FROM boards WHERE id = $1 AND owner_id = $2`
+	const query = `
+		DELETE FROM boards
+		WHERE id = $1
+		  AND owner_id = $2`
 
 	cmd, err := r.pgPool.Exec(ctx, query, boardID, callerID)
 	if err != nil {

@@ -27,7 +27,9 @@ func CreateUser(t *testing.T, pool *pgxpool.Pool, id domain.UserID, email domain
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const query = `INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`
+	const query = `
+		INSERT INTO users (id, email, password_hash)
+		VALUES ($1, $2, $3)`
 	_, err := pool.Exec(ctx, query, id, email, hash.RevealSecret())
 	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
@@ -41,8 +43,8 @@ func CreateBoard(t *testing.T, pool *pgxpool.Pool, board *domain.Board) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO boards (id, owner_id, name, description, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO boards (id, owner_id, name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := pool.Exec(
 		ctx, query,
 		board.ID,
@@ -64,9 +66,9 @@ func ListBoards(t *testing.T, pool *pgxpool.Pool) []domain.Board {
 	defer cancel()
 
 	const query = `
-			SELECT id, owner_id, name, description, created_at, updated_at
-			FROM boards
-			ORDER BY created_at ASC`
+		SELECT id, owner_id, name, description, created_at, updated_at
+		FROM boards
+		ORDER BY created_at ASC`
 
 	rows, err := pool.Query(ctx, query)
 	if err != nil {
@@ -98,8 +100,8 @@ func CreateColumn(t *testing.T, pool *pgxpool.Pool, column *domain.Column) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO columns (id, board_id, name, description, position, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO columns (id, board_id, name, description, position, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := pool.Exec(
 		ctx, query,
 		column.ID,
@@ -122,10 +124,10 @@ func ListColumnsByBoardID(t *testing.T, pool *pgxpool.Pool, boardID domain.Board
 	defer cancel()
 
 	const query = `
-			SELECT id, board_id, name, description, position, created_at, updated_at
-			FROM columns
-			WHERE board_id = $1
-			ORDER BY position ASC`
+		SELECT id, board_id, name, description, position, created_at, updated_at
+		FROM columns
+		WHERE board_id = $1
+		ORDER BY position ASC`
 
 	rows, err := pool.Query(ctx, query, boardID)
 	if err != nil {
@@ -158,8 +160,8 @@ func CreateTask(t *testing.T, pool *pgxpool.Pool, task *domain.Task) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO tasks (id, column_id, name, description, position, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO tasks (id, column_id, name, description, position, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := pool.Exec(
 		ctx, query,
 		task.ID,
@@ -182,10 +184,10 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	defer cancel()
 
 	const query = `
-			SELECT id, column_id, name, description, position, created_at, updated_at
-			FROM tasks
-			WHERE column_id = $1
-			ORDER BY position ASC`
+		SELECT id, column_id, name, description, position, created_at, updated_at
+		FROM tasks
+		WHERE column_id = $1
+		ORDER BY position ASC`
 
 	rows, err := pool.Query(ctx, query, columnID)
 	if err != nil {
@@ -238,11 +240,11 @@ func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tab
 	defer cancel()
 
 	const query = `
-			SELECT datetime_precision
-			FROM information_schema.columns
-			WHERE table_schema = current_schema()
-			  AND table_name = $1
-			  AND column_name = $2`
+		SELECT datetime_precision
+		FROM information_schema.columns
+		WHERE table_schema = current_schema()
+		    AND table_name = $1
+		    AND column_name = $2`
 
 	for _, columnName := range columnNames {
 		var precision int32
@@ -262,7 +264,10 @@ func ListUsers(t *testing.T, pool *pgxpool.Pool) []domain.User {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const query = `SELECT id, email, password_hash, telegram_chat_id, telegram_username FROM users ORDER BY id`
+	const query = `
+		SELECT id, email, password_hash, telegram_chat_id, telegram_username
+		FROM users
+		ORDER BY id`
 
 	rows, err := pool.Query(ctx, query)
 	if err != nil {

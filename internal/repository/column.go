@@ -25,7 +25,8 @@ const listColumnsByBoardIDQuery = `
 	SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
 	FROM boards b
 	JOIN columns c ON c.board_id = b.id
-	WHERE b.id = @board_id AND b.owner_id = @caller_id
+	WHERE b.id = @board_id
+	  AND b.owner_id = @caller_id
 	ORDER BY c.position ASC`
 
 func (r *PGColumn) Create(
@@ -40,7 +41,8 @@ func (r *PGColumn) Create(
 		lockBoardQuery = `
 		SELECT 1
 		FROM boards
-		WHERE id = @board_id AND owner_id = @caller_id
+		WHERE id = @board_id
+		  AND owner_id = @caller_id
 		FOR UPDATE`
 		insertColumnQuery = `
 		INSERT INTO columns (board_id, name, description, position)
@@ -51,7 +53,8 @@ func (r *PGColumn) Create(
 		    COALESCE(MAX(c.position), 0) + 1
 		FROM boards b
 		LEFT JOIN columns c ON c.board_id = b.id
-		WHERE b.id = @board_id AND b.owner_id = @caller_id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
 		GROUP BY b.id
 		RETURNING id, board_id, name, description, position, created_at, updated_at`
 		commitQuery = `COMMIT`
@@ -112,7 +115,8 @@ func (r *PGColumn) ListByBoardID(
 	const boardQuery = `
 		SELECT 1
 		FROM boards
-		WHERE id = @board_id AND owner_id = @caller_id`
+		WHERE id = @board_id
+		  AND owner_id = @caller_id`
 
 	args := pgx.NamedArgs{
 		"caller_id": callerID,
@@ -201,7 +205,9 @@ func (r *PGColumn) Update(
 			name = COALESCE($1, c.name),
 			description = COALESCE($2, c.description),
 			updated_at = CASE
-				WHEN $1 IS NULL AND $2 IS NULL THEN c.updated_at
+				WHEN $1 IS NULL
+				 AND $2 IS NULL
+				THEN c.updated_at
 				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
 			END
 		FROM boards b
