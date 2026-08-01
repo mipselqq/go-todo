@@ -113,25 +113,6 @@ func TestBoard_GetAggregate(t *testing.T) {
 	firstTask := testutil.NewValidTask(t, firstColumn.ID, "First", "First", 1)
 	secondTask := testutil.NewValidTask(t, firstColumn.ID, "Second", "Second", 2)
 
-	repo := NewMockBoardRepository(t)
-	repo.GetAggregateFunc = func(
-		ctx context.Context,
-		callerID domain.UserID,
-		boardID domain.BoardID,
-	) (domain.Board, []domain.Column, []domain.Task, error) {
-		if callerID != board.OwnerID {
-			t.Errorf("got callerID %v, want %v", callerID, board.OwnerID)
-		}
-		if boardID != board.ID {
-			t.Errorf("got boardID %v, want %v", boardID, board.ID)
-		}
-		return board, []domain.Column{secondColumn, firstColumn}, []domain.Task{secondTask, firstTask}, nil
-	}
-
-	got, err := service.NewBoard(repo).GetAggregate(context.Background(), board.OwnerID, board.ID)
-	if err != nil {
-		t.Fatalf("GetAggregate() error = %v", err)
-	}
 	want := service.AggregateBoard{
 		Board: board,
 		Columns: []service.AggregateColumn{
@@ -139,18 +120,13 @@ func TestBoard_GetAggregate(t *testing.T) {
 			{Column: secondColumn, Tasks: []domain.Task{}},
 		},
 	}
-	if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
-		t.Errorf("GetAggregate() mismatch (-want +got):\n%s", diff)
-	}
-}
 
-func TestBoard_GetAggregate_Errors(t *testing.T) {
-	board := testutil.ValidBoard()
 	tests := []struct {
 		name    string
 		repoErr error
 		wantErr error
 	}{
+		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
 		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
 	}
@@ -163,12 +139,26 @@ func TestBoard_GetAggregate_Errors(t *testing.T) {
 				callerID domain.UserID,
 				boardID domain.BoardID,
 			) (domain.Board, []domain.Column, []domain.Task, error) {
-				return domain.Board{}, nil, nil, tt.repoErr
+				if callerID != board.OwnerID {
+					t.Errorf("got callerID %v, want %v", callerID, board.OwnerID)
+				}
+				if boardID != board.ID {
+					t.Errorf("got boardID %v, want %v", boardID, board.ID)
+				}
+				if tt.repoErr != nil {
+					return domain.Board{}, nil, nil, tt.repoErr
+				}
+				return board, []domain.Column{secondColumn, firstColumn}, []domain.Task{secondTask, firstTask}, nil
 			}
 
-			_, err := service.NewBoard(repo).GetAggregate(context.Background(), board.OwnerID, board.ID)
+			got, err := service.NewBoard(repo).GetAggregate(context.Background(), board.OwnerID, board.ID)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("GetAggregate() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("GetAggregate() mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
