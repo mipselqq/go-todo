@@ -16,6 +16,7 @@ import (
 func TestColumn_Create(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -58,7 +59,9 @@ func TestColumn_Create(t *testing.T) {
 func TestColumn_ListByBoardID(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
+
 	want := []domain.Column{column}
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -97,6 +100,7 @@ func TestColumn_Update(t *testing.T) {
 	column := testutil.ValidColumn(board.ID)
 	name := column.Name
 	description := column.Description
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -141,6 +145,7 @@ func TestColumn_Move(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	position := column.Position
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -182,6 +187,7 @@ func TestColumn_Move(t *testing.T) {
 func TestColumn_Delete(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
+
 	tests := []struct {
 		name    string
 		repoErr error

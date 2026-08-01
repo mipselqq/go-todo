@@ -17,6 +17,7 @@ func TestTask_Create(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -61,7 +62,9 @@ func TestTask_ListByColumnID(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
+
 	want := []domain.Task{task}
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -106,6 +109,7 @@ func TestTask_Update(t *testing.T) {
 	task := testutil.ValidTask(column.ID)
 	name := task.Name
 	description := task.Description
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -153,6 +157,7 @@ func TestTask_Move(t *testing.T) {
 	targetColumn := testutil.NewValidColumn(t, board.ID, "Target", 2)
 	task := testutil.ValidTask(column.ID)
 	position := task.Position
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -209,6 +214,7 @@ func TestTask_Delete(t *testing.T) {
 	board := testutil.ValidBoard()
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
+
 	tests := []struct {
 		name    string
 		repoErr error

@@ -15,6 +15,7 @@ import (
 
 func TestBoard_Create(t *testing.T) {
 	board := testutil.ValidBoard()
+
 	repo := NewMockBoardRepository(t)
 	repo.CreateFunc = func(
 		ctx context.Context,
@@ -45,7 +46,9 @@ func TestBoard_Create(t *testing.T) {
 
 func TestBoard_ListByOwnerID(t *testing.T) {
 	board := testutil.ValidBoard()
+
 	want := []domain.Board{board}
+
 	repo := NewMockBoardRepository(t)
 	repo.ListByOwnerIDFunc = func(ctx context.Context, ownerID domain.UserID) ([]domain.Board, error) {
 		if ownerID != board.OwnerID {
@@ -65,6 +68,7 @@ func TestBoard_ListByOwnerID(t *testing.T) {
 
 func TestBoard_Get(t *testing.T) {
 	board := testutil.ValidBoard()
+
 	tests := []struct {
 		name     string
 		repoErr  error
@@ -168,6 +172,7 @@ func TestBoard_Update(t *testing.T) {
 	board := testutil.ValidBoard()
 	name := board.Name
 	description := board.Description
+
 	tests := []struct {
 		name    string
 		repoErr error
@@ -212,6 +217,7 @@ func TestBoard_Update(t *testing.T) {
 
 func TestBoard_Delete(t *testing.T) {
 	board := testutil.ValidBoard()
+
 	tests := []struct {
 		name    string
 		repoErr error
