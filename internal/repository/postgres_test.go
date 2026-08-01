@@ -177,6 +177,55 @@ func CreateTask(t *testing.T, pool *pgxpool.Pool, task *domain.Task) {
 	}
 }
 
+type testBoardHierarchy struct {
+	board         domain.Board
+	column        domain.Column
+	task          domain.Task
+	anotherBoard  domain.Board
+	anotherColumn domain.Column
+	anotherTask   domain.Task
+	missingBoard  domain.Board
+	missingColumn domain.Column
+	missingTask   domain.Task
+}
+
+func insertBoardHierarchy(t *testing.T, pool *pgxpool.Pool) testBoardHierarchy {
+	t.Helper()
+
+	board := testutil.ValidBoard()
+	column := testutil.ValidColumn(board.ID)
+	task := testutil.ValidTask(column.ID)
+
+	anotherBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	anotherColumn := testutil.ValidColumn(anotherBoard.ID)
+	anotherTask := testutil.ValidTask(anotherColumn.ID)
+
+	CreateFixedUser(t, pool)
+	insertAnotherUser(t, pool, anotherBoard.OwnerID)
+	CreateBoard(t, pool, &board)
+	CreateColumn(t, pool, &column)
+	CreateTask(t, pool, &task)
+	CreateBoard(t, pool, &anotherBoard)
+	CreateColumn(t, pool, &anotherColumn)
+	CreateTask(t, pool, &anotherTask)
+
+	missingBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	missingColumn := testutil.ValidColumn(missingBoard.ID)
+	missingTask := testutil.ValidTask(missingColumn.ID)
+
+	return testBoardHierarchy{
+		board:         board,
+		column:        column,
+		task:          task,
+		anotherBoard:  anotherBoard,
+		anotherColumn: anotherColumn,
+		anotherTask:   anotherTask,
+		missingBoard:  missingBoard,
+		missingColumn: missingColumn,
+		missingTask:   missingTask,
+	}
+}
+
 func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.ColumnID) []domain.Task {
 	t.Helper()
 
@@ -213,24 +262,14 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	return tasks
 }
 
-func insertFixedUserAndBoard(t *testing.T, pool *pgxpool.Pool) domain.Board {
+func insertAnotherUser(t *testing.T, pool *pgxpool.Pool, userID domain.UserID) {
 	t.Helper()
 
-	CreateFixedUser(t, pool)
-	board := testutil.ValidBoard()
-	CreateBoard(t, pool, &board)
-
-	return board
-}
-
-func insertFixedUserBoardAndColumn(t *testing.T, pool *pgxpool.Pool) (domain.Board, domain.Column) {
-	t.Helper()
-
-	board := insertFixedUserAndBoard(t, pool)
-	column := testutil.ValidColumn(board.ID)
-	CreateColumn(t, pool, &column)
-
-	return board, column
+	email, err := domain.NewEmail("another@example.com")
+	if err != nil {
+		t.Fatalf("NewEmail() error = %v", err)
+	}
+	CreateUser(t, pool, userID, email, testutil.ValidPasswordHash())
 }
 
 func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tableName string, columnNames ...string) {

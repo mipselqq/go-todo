@@ -23,7 +23,7 @@ func TestBoard_Create(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -72,7 +72,7 @@ func TestBoard_ListByOwnerID(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -102,15 +102,14 @@ func TestBoard_Get(t *testing.T) {
 	board := testutil.ValidBoard()
 
 	tests := []struct {
-		name     string
-		repoErr  error
-		wantErr  error
-		wantZero bool
+		name    string
+		repoErr error
+		wantErr error
 	}{
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -163,7 +162,7 @@ func TestBoard_GetAggregate(t *testing.T) {
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -212,7 +211,7 @@ func TestBoard_Update(t *testing.T) {
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -258,7 +257,7 @@ func TestBoard_Delete(t *testing.T) {
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
 		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
-		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: testutil.ErrUnexpected, wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {

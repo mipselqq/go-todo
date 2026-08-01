@@ -19,95 +19,90 @@ import (
 func TestColumnRepository_Create(t *testing.T) {
 	pool, r := columnRepoPrelude(t)
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name            string
+		useAnotherOwner bool
+		useMissingOwner bool
+		useAnotherBoard bool
+		useMissingBoard bool
+		wantErr         error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			emptyBoard := testutil.ValidBoardForOwner(hierarchy.board.OwnerID)
+			CreateBoard(t, pool, &emptyBoard)
+			validColumn := testutil.ValidColumn(emptyBoard.ID)
 
-		validColumn := testutil.ValidColumn(board.ID)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := emptyBoard
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
 
-		column, err := r.Create(
-			context.Background(),
-			board.OwnerID,
-			board.ID,
-			validColumn.Name,
-			validColumn.Description,
-		)
-		if err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if column.ID.IsNil() {
-			t.Error("got empty column id, want generated id")
-		}
-		if column.BoardID != board.ID {
-			t.Errorf("got boardID %q, want %q", column.BoardID, board.ID)
-		}
-		if column.Name != validColumn.Name {
-			t.Errorf("got name %q, want %q", column.Name, validColumn.Name)
-		}
-		if column.Description != validColumn.Description {
-			t.Errorf("got description %q, want %q", column.Description, validColumn.Description)
-		}
-		if column.Position.Int64() != 1 {
-			t.Errorf("got position %d, want 1", column.Position.Int64())
-		}
-		if column.CreatedAt.IsZero() {
-			t.Errorf("got zero createdAt, want set value")
-		}
-		if column.UpdatedAt.IsZero() {
-			t.Errorf("got zero updatedAt, want set value")
-		}
-		if !column.CreatedAt.Equal(column.UpdatedAt) {
-			t.Errorf("got createdAt=%v updatedAt=%v, want equal", column.CreatedAt, column.UpdatedAt)
-		}
-		AssertTimestampPrecisionAtLeastMillis(t, pool, "columns", "created_at", "updated_at")
-
-		storedColumns := ListColumnsByBoardID(t, pool, board.ID)
-		if len(storedColumns) != 1 {
-			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 1", len(storedColumns))
-		}
-		if diff := cmp.Diff(column, storedColumns[0], testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("got stored column mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board := insertFixedUserAndBoard(t, pool)
-				column := testutil.ValidColumn(board.ID)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-
-				_, err := r.Create(context.Background(), callerID, boardID, column.Name, column.Description)
-				assertErrRowNotFound(t, err)
-
-				if got := ListColumnsByBoardID(t, pool, board.ID); len(got) != 0 {
+			column, err := r.Create(context.Background(), callerID, targetBoard.ID, validColumn.Name, validColumn.Description)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				if got := ListColumnsByBoardID(t, pool, emptyBoard.ID); len(got) != 0 {
 					t.Errorf("got %d columns, want 0", len(got))
 				}
-			})
-		}
-	})
+				return
+			}
+
+			if column.ID.IsNil() {
+				t.Error("got empty column id, want generated id")
+			}
+			if column.BoardID != emptyBoard.ID {
+				t.Errorf("got boardID %q, want %q", column.BoardID, emptyBoard.ID)
+			}
+			if column.Name != validColumn.Name {
+				t.Errorf("got name %q, want %q", column.Name, validColumn.Name)
+			}
+			if column.Description != validColumn.Description {
+				t.Errorf("got description %q, want %q", column.Description, validColumn.Description)
+			}
+			if column.Position.Int64() != 1 {
+				t.Errorf("got position %d, want 1", column.Position.Int64())
+			}
+			if column.CreatedAt.IsZero() {
+				t.Errorf("got zero createdAt, want set value")
+			}
+			if column.UpdatedAt.IsZero() {
+				t.Errorf("got zero updatedAt, want set value")
+			}
+			if !column.CreatedAt.Equal(column.UpdatedAt) {
+				t.Errorf("got createdAt=%v updatedAt=%v, want equal", column.CreatedAt, column.UpdatedAt)
+			}
+			AssertTimestampPrecisionAtLeastMillis(t, pool, "columns", "created_at", "updated_at")
+
+			storedColumns := ListColumnsByBoardID(t, pool, emptyBoard.ID)
+			if len(storedColumns) != 1 {
+				t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 1", len(storedColumns))
+			}
+			if diff := cmp.Diff(column, storedColumns[0], testutil.CmpAllowUnexported()); diff != "" {
+				t.Errorf("got stored column mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func TestColumnRepository_Create_AppendsPosition(t *testing.T) {
@@ -115,18 +110,14 @@ func TestColumnRepository_Create_AppendsPosition(t *testing.T) {
 
 	testutil.TruncateAllTables(t, pool)
 
-	board := insertFixedUserAndBoard(t, pool)
+	hierarchy := insertBoardHierarchy(t, pool)
 
-	existing := testutil.ValidColumn(board.ID)
-	CreateColumn(t, pool, &existing)
-
-	toCreate := testutil.ValidColumn(board.ID)
-	toCreate = testutil.UpdateValidColumn(t, &toCreate, "Done", toCreate.Description.String(), toCreate.UpdatedAt)
+	toCreate := testutil.NewValidColumn(t, hierarchy.board.ID, "Done", 2)
 
 	second, err := r.Create(
 		context.Background(),
-		board.OwnerID,
-		board.ID,
+		hierarchy.board.OwnerID,
+		hierarchy.board.ID,
 		toCreate.Name,
 		toCreate.Description,
 	)
@@ -141,40 +132,63 @@ func TestColumnRepository_Create_AppendsPosition(t *testing.T) {
 func TestColumnRepository_ListByBoardID(t *testing.T) {
 	pool, r := columnRepoPrelude(t)
 
-	t.Run("Success empty", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name            string
+		useAnotherOwner bool
+		useMissingOwner bool
+		useAnotherBoard bool
+		useMissingBoard bool
+		wantErr         error
+	}{
+		{name: "Success empty"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			emptyBoard := testutil.ValidBoardForOwner(hierarchy.board.OwnerID)
+			CreateBoard(t, pool, &emptyBoard)
 
-		columns, err := r.ListByBoardID(context.Background(), board.OwnerID, board.ID)
-		if err != nil {
-			t.Fatalf("ListByBoardID() error = %v", err)
-		}
-		if len(columns) != 0 {
-			t.Fatalf("got %d columns, want 0", len(columns))
-		}
-	})
+			callerID := hierarchy.board.OwnerID
+			targetBoard := emptyBoard
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+
+			columns, err := r.ListByBoardID(context.Background(), callerID, targetBoard.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("ListByBoardID() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && len(columns) != 0 {
+				t.Errorf("got %d columns, want 0", len(columns))
+			}
+		})
+	}
 
 	t.Run("Success ordered and filtered by board", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
 
-		CreateFixedUser(t, pool)
-
-		boardA := testutil.ValidBoard()
-		CreateBoard(t, pool, &boardA)
-
-		boardB := testutil.ValidBoard()
-		CreateBoard(t, pool, &boardB)
-
-		first := testutil.ValidColumn(boardA.ID)
-		second := testutil.NewValidColumn(t, boardA.ID, "In Progress", 2)
-		otherBoardColumn := testutil.NewValidColumn(t, boardB.ID, "Done", 1)
+		first := hierarchy.column
+		second := testutil.NewValidColumn(t, hierarchy.board.ID, "In Progress", 2)
 
 		CreateColumn(t, pool, &second)
-		CreateColumn(t, pool, &first)
-		CreateColumn(t, pool, &otherBoardColumn)
 
-		got, err := r.ListByBoardID(context.Background(), boardA.OwnerID, boardA.ID)
+		got, err := r.ListByBoardID(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID)
 		if err != nil {
 			t.Fatalf("ListByBoardID() error = %v", err)
 		}
@@ -184,99 +198,68 @@ func TestColumnRepository_ListByBoardID(t *testing.T) {
 			t.Errorf("ListByBoardID() mismatch (-want +got):\n%s", diff)
 		}
 	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board := insertFixedUserAndBoard(t, pool)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-
-				_, err := r.ListByBoardID(context.Background(), callerID, boardID)
-				assertErrRowNotFound(t, err)
-			})
-		}
-	})
 }
 
 func TestColumnRepository_Get(t *testing.T) {
 	pool, r := columnRepoPrelude(t)
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
 
-		created := testutil.ValidColumn(board.ID)
-		CreateColumn(t, pool, &created)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := hierarchy.column
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		got, err := r.Get(context.Background(), board.OwnerID, board.ID, created.ID)
-		if err != nil {
-			t.Fatalf("Get() error = %v", err)
-		}
-		if diff := cmp.Diff(created, got, testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("Get() mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
+			got, err := r.Get(context.Background(), callerID, targetBoard.ID, targetColumn.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Get() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(hierarchy.column, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("Get() mismatch (-want +got):\n%s", diff)
 				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				_, err := r.Get(context.Background(), callerID, boardID, columnID)
-				assertErrRowNotFound(t, err)
-			})
-		}
-	})
+			}
+		})
+	}
 }
 
 func TestColumnRepository_Update(t *testing.T) {
@@ -317,54 +300,90 @@ func TestColumnRepository_Update(t *testing.T) {
 		}
 	}
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			want := testutil.UpdateValidColumn(t, &hierarchy.column, "Renamed", hierarchy.column.Description.String(), hierarchy.column.UpdatedAt)
 
-		created := testutil.ValidColumn(board.ID)
-		createdAtBeforeUpdate := time.Now().UTC()
-		updatedAtBeforeUpdate := createdAtBeforeUpdate
-		created.CreatedAt = createdAtBeforeUpdate
-		created.UpdatedAt = updatedAtBeforeUpdate
-		CreateColumn(t, pool, &created)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := hierarchy.column
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		want := testutil.UpdateValidColumn(t, &created, "Renamed", created.Description.String(), testutil.Fixed5mFromNow())
-		updated, err := r.Update(context.Background(), board.OwnerID, board.ID, created.ID, &want.Name, nil)
-		if err != nil {
-			t.Fatalf("Update() error = %v", err)
-		}
+			got, err := r.Update(context.Background(), callerID, targetBoard.ID, targetColumn.ID, &want.Name, nil)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Update() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				assertUpdatedColumn(t, got, want)
+				return
+			}
 
-		assertUpdatedColumn(t, updated, want)
-	})
+			if diff := cmp.Diff([]domain.Column{hierarchy.column}, ListColumnsByBoardID(t, pool, hierarchy.board.ID), testutil.CmpAllowUnexported()); diff != "" {
+				t.Errorf("stored columns mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 
 	t.Run("Success description only", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board := insertFixedUserAndBoard(t, pool)
-
-		created := testutil.ValidColumn(board.ID)
-		createdAtBeforeUpdate := time.Now().UTC()
-		created.CreatedAt = createdAtBeforeUpdate
-		created.UpdatedAt = createdAtBeforeUpdate
-		CreateColumn(t, pool, &created)
+		hierarchy := insertBoardHierarchy(t, pool)
+		column := hierarchy.column
 
 		newDesc, err := domain.NewColumnDescription("Updated column body")
 		if err != nil {
 			t.Fatalf("NewColumnDescription() error = %v", err)
 		}
-		updated, err := r.Update(context.Background(), board.OwnerID, board.ID, created.ID, nil, &newDesc)
+		updated, err := r.Update(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID, column.ID, nil, &newDesc)
 		if err != nil {
 			t.Fatalf("Update() error = %v", err)
 		}
 
-		if updated.Name != created.Name {
-			t.Errorf("got name %q, want %q", updated.Name, created.Name)
+		if updated.Name != column.Name {
+			t.Errorf("got name %q, want %q", updated.Name, column.Name)
 		}
 		if updated.Description != newDesc {
 			t.Errorf("got description %q, want %q", updated.Description, newDesc)
 		}
-		storedColumns := ListColumnsByBoardID(t, pool, created.BoardID)
+		storedColumns := ListColumnsByBoardID(t, pool, column.BoardID)
 		if len(storedColumns) != 1 {
 			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 1", len(storedColumns))
 		}
@@ -377,59 +396,14 @@ func TestColumnRepository_Update(t *testing.T) {
 	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
 
-		got, err := r.Update(context.Background(), board.OwnerID, board.ID, column.ID, nil, nil)
+		got, err := r.Update(context.Background(), hierarchy.board.OwnerID, hierarchy.board.ID, hierarchy.column.ID, nil, nil)
 		if err != nil {
 			t.Fatalf("Update() error = %v", err)
 		}
-		if diff := cmp.Diff(column, got, testutil.CmpAllowUnexported()); diff != "" {
+		if diff := cmp.Diff(hierarchy.column, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				updatedName, _ := domain.NewColumnName("Renamed")
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				_, err := r.Update(context.Background(), callerID, boardID, columnID, &updatedName, nil)
-				assertErrRowNotFound(t, err)
-
-				stored := ListColumnsByBoardID(t, pool, board.ID)
-				if diff := cmp.Diff([]domain.Column{column}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored columns mismatch (-want +got):\n%s", diff)
-				}
-			})
 		}
 	})
 }
@@ -437,50 +411,92 @@ func TestColumnRepository_Update(t *testing.T) {
 func TestColumnRepository_Move(t *testing.T) {
 	pool, r := columnRepoPrelude(t)
 
-	t.Run("Success move down", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success move down"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			first := hierarchy.column
+			second := testutil.NewValidColumn(t, hierarchy.board.ID, "In Progress", 2)
+			third := testutil.NewValidColumn(t, hierarchy.board.ID, "Done", 3)
+			CreateColumn(t, pool, &third)
+			CreateColumn(t, pool, &second)
 
-		first := testutil.ValidColumn(board.ID)
-		second := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
-		third := testutil.NewValidColumn(t, board.ID, "Done", 3)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := first
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		CreateColumn(t, pool, &third)
-		CreateColumn(t, pool, &first)
-		CreateColumn(t, pool, &second)
+			targetPosition := testutil.NewValidColumnPosition(t, 3)
+			gotPosition, err := r.Move(context.Background(), callerID, targetBoard.ID, targetColumn.ID, targetPosition)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Move() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && gotPosition != targetPosition {
+				t.Errorf("Move() position = %v, want %v", gotPosition, targetPosition)
+			}
 
-		targetPosition := testutil.NewValidColumnPosition(t, 3)
-
-		gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, first.ID, targetPosition)
-		if err != nil {
-			t.Fatalf("Move() error = %v", err)
-		}
-		if gotPosition != targetPosition {
-			t.Fatalf("Move() position = %v, want %v", gotPosition, targetPosition)
-		}
-
-		got := ListColumnsByBoardID(t, pool, board.ID)
-		if len(got) != 3 {
-			t.Fatalf("got %d columns after move, want 3", len(got))
-		}
-		assertColumnIDAndPosition(t, &got[0], second.ID, 1)
-		assertColumnIDAndPosition(t, &got[1], third.ID, 2)
-		assertColumnIDAndPosition(t, &got[2], first.ID, 3)
-	})
+			got := ListColumnsByBoardID(t, pool, hierarchy.board.ID)
+			if len(got) != 3 {
+				t.Fatalf("got %d columns after move, want 3", len(got))
+			}
+			if tt.wantErr == nil {
+				assertColumnIDAndPosition(t, &got[0], second.ID, 1)
+				assertColumnIDAndPosition(t, &got[1], third.ID, 2)
+				assertColumnIDAndPosition(t, &got[2], first.ID, 3)
+				return
+			}
+			assertColumnIDAndPosition(t, &got[0], first.ID, 1)
+			assertColumnIDAndPosition(t, &got[1], second.ID, 2)
+			assertColumnIDAndPosition(t, &got[2], third.ID, 3)
+		})
+	}
 
 	t.Run("Success move up", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board := insertFixedUserAndBoard(t, pool)
-
-		first := testutil.ValidColumn(board.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
 		second := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 		third := testutil.NewValidColumn(t, board.ID, "Done", 3)
 
 		CreateColumn(t, pool, &second)
 		CreateColumn(t, pool, &third)
-		CreateColumn(t, pool, &first)
 
 		targetPosition := testutil.NewValidColumnPosition(t, 1)
 
@@ -497,20 +513,18 @@ func TestColumnRepository_Move(t *testing.T) {
 			t.Fatalf("got %d columns after move, want 3", len(got))
 		}
 		assertColumnIDAndPosition(t, &got[0], third.ID, 1)
-		assertColumnIDAndPosition(t, &got[1], first.ID, 2)
+		assertColumnIDAndPosition(t, &got[1], hierarchy.column.ID, 2)
 		assertColumnIDAndPosition(t, &got[2], second.ID, 3)
 	})
 
 	t.Run("Success no-op", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board := insertFixedUserAndBoard(t, pool)
-
-		first := testutil.ValidColumn(board.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
 		second := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 
 		CreateColumn(t, pool, &second)
-		CreateColumn(t, pool, &first)
 
 		targetPosition := testutil.NewValidColumnPosition(t, 2)
 
@@ -526,22 +540,20 @@ func TestColumnRepository_Move(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("got %d columns after no-op move, want 2", len(got))
 		}
-		assertColumnIDAndPosition(t, &got[0], first.ID, 1)
+		assertColumnIDAndPosition(t, &got[0], hierarchy.column.ID, 1)
 		assertColumnIDAndPosition(t, &got[1], second.ID, 2)
 	})
 
 	t.Run("Index out of bounds", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board := insertFixedUserAndBoard(t, pool)
-
-		first := testutil.ValidColumn(board.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
 		second := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 		third := testutil.NewValidColumn(t, board.ID, "Done", 3)
 
 		CreateColumn(t, pool, &second)
 		CreateColumn(t, pool, &third)
-		CreateColumn(t, pool, &first)
 
 		targetPosition := testutil.NewValidColumnPosition(t, 4)
 
@@ -554,129 +566,88 @@ func TestColumnRepository_Move(t *testing.T) {
 		if len(got) != 3 {
 			t.Fatalf("got %d columns after failed move, want 3", len(got))
 		}
-		assertColumnIDAndPosition(t, &got[0], first.ID, 1)
+		assertColumnIDAndPosition(t, &got[0], hierarchy.column.ID, 1)
 		assertColumnIDAndPosition(t, &got[1], second.ID, 2)
 		assertColumnIDAndPosition(t, &got[2], third.ID, 3)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				_, err := r.Move(context.Background(), callerID, boardID, columnID, column.Position)
-				assertErrRowNotFound(t, err)
-
-				stored := ListColumnsByBoardID(t, pool, board.ID)
-				if diff := cmp.Diff([]domain.Column{column}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored columns mismatch (-want +got):\n%s", diff)
-				}
-			})
-		}
 	})
 }
 
 func TestColumnRepository_Delete(t *testing.T) {
 	pool, r := columnRepoPrelude(t)
 
-	t.Run("Success shift positions", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success shift positions"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board := insertFixedUserAndBoard(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			first := hierarchy.column
+			second := testutil.NewValidColumn(t, hierarchy.board.ID, "In Progress", 2)
+			third := testutil.NewValidColumn(t, hierarchy.board.ID, "Done", 3)
+			CreateColumn(t, pool, &third)
+			CreateColumn(t, pool, &second)
 
-		first := testutil.ValidColumn(board.ID)
-		second := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
-		third := testutil.NewValidColumn(t, board.ID, "Done", 3)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := second
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		CreateColumn(t, pool, &third)
-		CreateColumn(t, pool, &first)
-		CreateColumn(t, pool, &second)
+			err := r.Delete(context.Background(), callerID, targetBoard.ID, targetColumn.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Delete() error = %v, want %v", err, tt.wantErr)
+			}
 
-		err := r.Delete(context.Background(), board.OwnerID, board.ID, second.ID)
-		if err != nil {
-			t.Fatalf("Delete() error = %v", err)
-		}
-
-		got := ListColumnsByBoardID(t, pool, board.ID)
-
-		if len(got) != 2 {
-			t.Fatalf("got %d columns after delete, want 2", len(got))
-		}
-		assertColumnIDAndPosition(t, &got[0], first.ID, 1)
-		assertColumnIDAndPosition(t, &got[1], third.ID, 2)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
+			got := ListColumnsByBoardID(t, pool, hierarchy.board.ID)
+			if tt.wantErr == nil {
+				if len(got) != 2 {
+					t.Fatalf("got %d columns after delete, want 2", len(got))
 				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				err := r.Delete(context.Background(), callerID, boardID, columnID)
-				assertErrRowNotFound(t, err)
-
-				stored := ListColumnsByBoardID(t, pool, board.ID)
-				if diff := cmp.Diff([]domain.Column{column}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored columns mismatch (-want +got):\n%s", diff)
-				}
-			})
-		}
-	})
+				assertColumnIDAndPosition(t, &got[0], first.ID, 1)
+				assertColumnIDAndPosition(t, &got[1], third.ID, 2)
+				return
+			}
+			if len(got) != 3 {
+				t.Fatalf("got %d columns after failed delete, want 3", len(got))
+			}
+			assertColumnIDAndPosition(t, &got[0], first.ID, 1)
+			assertColumnIDAndPosition(t, &got[1], second.ID, 2)
+			assertColumnIDAndPosition(t, &got[2], third.ID, 3)
+		})
+	}
 }
 
 func assertColumnIDAndPosition(t *testing.T, col *domain.Column, wantID domain.ColumnID, wantPos int64) {

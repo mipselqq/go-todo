@@ -3,6 +3,7 @@ package testutil
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -153,15 +154,18 @@ func ValidJWTOptions() service.JWTOptions {
 }
 
 func ValidBoard() domain.Board {
+	return ValidBoardForOwner(ValidUserID())
+}
+
+func ValidBoardForOwner(ownerID domain.UserID) domain.Board {
 	name := ValidBoardName()
 	description := ValidBoardDescription()
 	id := domain.NewBoardID()
-	userID := ValidUserID()
 	pseudoNow := FixedNow()
 
 	validBoard := domain.Board{
 		ID:          id,
-		OwnerID:     userID,
+		OwnerID:     ownerID,
 		Name:        name,
 		Description: description,
 		CreatedAt:   pseudoNow,
@@ -277,3 +281,5 @@ func UpdateValidTask(t *testing.T, base *domain.Task, name, description string, 
 		UpdatedAt:   updatedAt,
 	}
 }
+
+var ErrUnexpected = errors.New("cosmic ray")

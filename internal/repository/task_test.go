@@ -22,103 +22,101 @@ import (
 func TestTaskRepository_Create(t *testing.T) {
 	pool, r := taskRepoPrelude(t)
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			emptyColumn := testutil.NewValidColumn(t, hierarchy.board.ID, "Empty", 2)
+			CreateColumn(t, pool, &emptyColumn)
+			validTask := testutil.ValidTask(emptyColumn.ID)
 
-		validTask := testutil.ValidTask(column.ID)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := emptyColumn
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		task, err := r.Create(
-			context.Background(),
-			board.OwnerID,
-			board.ID,
-			column.ID,
-			validTask.Name,
-			validTask.Description,
-		)
-		if err != nil {
-			t.Fatalf("Create() error = %v", err)
-		}
-
-		if task.ID.IsNil() {
-			t.Error("got empty task id, want generated id")
-		}
-		if task.ColumnID != column.ID {
-			t.Errorf("got columnID %q, want %q", task.ColumnID, column.ID)
-		}
-		if task.Name != validTask.Name {
-			t.Errorf("got name %q, want %q", task.Name, validTask.Name)
-		}
-		if task.Description != validTask.Description {
-			t.Errorf("got description %q, want %q", task.Description, validTask.Description)
-		}
-		if task.Position.Int64() != 1 {
-			t.Errorf("got position %d, want 1", task.Position.Int64())
-		}
-		if task.CreatedAt.IsZero() {
-			t.Errorf("got zero createdAt, want set value")
-		}
-		if task.UpdatedAt.IsZero() {
-			t.Errorf("got zero updatedAt, want set value")
-		}
-		if !task.CreatedAt.Equal(task.UpdatedAt) {
-			t.Errorf("got createdAt=%v updatedAt=%v, want equal", task.CreatedAt, task.UpdatedAt)
-		}
-		AssertTimestampPrecisionAtLeastMillis(t, pool, "tasks", "created_at", "updated_at")
-
-		storedTasks := ListTasksByColumnID(t, pool, column.ID)
-		if len(storedTasks) != 1 {
-			t.Fatalf("ListTasksByColumnID() returned %d tasks, want exactly 1", len(storedTasks))
-		}
-		if diff := cmp.Diff(task, storedTasks[0], testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("got stored task mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				task := testutil.ValidTask(column.ID)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				_, err := r.Create(context.Background(), callerID, boardID, columnID, task.Name, task.Description)
-				assertErrRowNotFound(t, err)
-
-				if got := ListTasksByColumnID(t, pool, column.ID); len(got) != 0 {
+			task, err := r.Create(context.Background(), callerID, targetBoard.ID, targetColumn.ID, validTask.Name, validTask.Description)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				if got := ListTasksByColumnID(t, pool, emptyColumn.ID); len(got) != 0 {
 					t.Errorf("got %d tasks, want 0", len(got))
 				}
-			})
-		}
-	})
+				return
+			}
+
+			if task.ID.IsNil() {
+				t.Error("got empty task id, want generated id")
+			}
+			if task.ColumnID != emptyColumn.ID {
+				t.Errorf("got columnID %q, want %q", task.ColumnID, emptyColumn.ID)
+			}
+			if task.Name != validTask.Name {
+				t.Errorf("got name %q, want %q", task.Name, validTask.Name)
+			}
+			if task.Description != validTask.Description {
+				t.Errorf("got description %q, want %q", task.Description, validTask.Description)
+			}
+			if task.Position.Int64() != 1 {
+				t.Errorf("got position %d, want 1", task.Position.Int64())
+			}
+			if task.CreatedAt.IsZero() {
+				t.Errorf("got zero createdAt, want set value")
+			}
+			if task.UpdatedAt.IsZero() {
+				t.Errorf("got zero updatedAt, want set value")
+			}
+			if !task.CreatedAt.Equal(task.UpdatedAt) {
+				t.Errorf("got createdAt=%v updatedAt=%v, want equal", task.CreatedAt, task.UpdatedAt)
+			}
+			AssertTimestampPrecisionAtLeastMillis(t, pool, "tasks", "created_at", "updated_at")
+
+			storedTasks := ListTasksByColumnID(t, pool, emptyColumn.ID)
+			if len(storedTasks) != 1 {
+				t.Fatalf("ListTasksByColumnID() returned %d tasks, want exactly 1", len(storedTasks))
+			}
+			if diff := cmp.Diff(task, storedTasks[0], testutil.CmpAllowUnexported()); diff != "" {
+				t.Errorf("got stored task mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
@@ -126,17 +124,15 @@ func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
 
 	testutil.TruncateAllTables(t, pool)
 
-	board, column := insertFixedUserBoardAndColumn(t, pool)
-
-	existing := testutil.ValidTask(column.ID)
-	CreateTask(t, pool, &existing)
+	hierarchy := insertBoardHierarchy(t, pool)
+	column := hierarchy.column
 
 	toCreate := testutil.NewValidTask(t, column.ID, "Second", "Second description", 2)
 
 	second, err := r.Create(
 		context.Background(),
-		board.OwnerID,
-		board.ID,
+		hierarchy.board.OwnerID,
+		hierarchy.board.ID,
 		column.ID,
 		toCreate.Name,
 		toCreate.Description,
@@ -152,33 +148,77 @@ func TestTaskRepository_Create_AppendsPosition(t *testing.T) {
 func TestTaskRepository_ListByColumnID(t *testing.T) {
 	pool, r := taskRepoPrelude(t)
 
-	t.Run("Success empty", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name             string
+		useAnotherOwner  bool
+		useMissingOwner  bool
+		useAnotherBoard  bool
+		useMissingBoard  bool
+		useAnotherColumn bool
+		useMissingColumn bool
+		wantErr          error
+	}{
+		{name: "Success empty"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			emptyColumn := testutil.NewValidColumn(t, hierarchy.board.ID, "Empty", 2)
+			CreateColumn(t, pool, &emptyColumn)
 
-		tasks, err := r.ListByColumnID(context.Background(), board.OwnerID, board.ID, column.ID)
-		if err != nil {
-			t.Fatalf("ListByColumnID() error = %v", err)
-		}
-		if len(tasks) != 0 {
-			t.Fatalf("got %d tasks, want 0", len(tasks))
-		}
-	})
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := emptyColumn
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
+
+			tasks, err := r.ListByColumnID(context.Background(), callerID, targetBoard.ID, targetColumn.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("ListByColumnID() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil && len(tasks) != 0 {
+				t.Errorf("got %d tasks, want 0", len(tasks))
+			}
+		})
+	}
 
 	t.Run("Success ordered and filtered by column", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, columnA := insertFixedUserBoardAndColumn(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		columnA := hierarchy.column
 		columnB := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 		CreateColumn(t, pool, &columnB)
 
-		first := testutil.ValidTask(columnA.ID)
 		second := testutil.NewValidTask(t, columnA.ID, "Second", "second", 2)
 		otherColumnTask := testutil.NewValidTask(t, columnB.ID, "Other", "other", 1)
 
 		CreateTask(t, pool, &second)
-		CreateTask(t, pool, &first)
 		CreateTask(t, pool, &otherColumnTask)
 
 		got, err := r.ListByColumnID(context.Background(), board.OwnerID, board.ID, columnA.ID)
@@ -186,48 +226,9 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 			t.Fatalf("ListByColumnID() error = %v", err)
 		}
 
-		want := []domain.Task{first, second}
+		want := []domain.Task{hierarchy.task, second}
 		if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("ListByColumnID() mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		missingColumnID := domain.NewColumnID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Missing column", columnID: &missingColumnID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-
-				_, err := r.ListByColumnID(context.Background(), callerID, boardID, columnID)
-				assertErrRowNotFound(t, err)
-			})
 		}
 	})
 }
@@ -235,73 +236,89 @@ func TestTaskRepository_ListByColumnID(t *testing.T) {
 func TestTaskRepository_Get(t *testing.T) {
 	pool, r := taskRepoPrelude(t)
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name                      string
+		useAnotherOwner           bool
+		useMissingOwner           bool
+		useAnotherBoard           bool
+		useMissingBoard           bool
+		useAnotherColumn          bool
+		useColumnFromAnotherBoard bool
+		useMissingColumn          bool
+		useAnotherTask            bool
+		useMissingTask            bool
+		wantErr                   error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another column", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useColumnFromAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from another column", useAnotherTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			var sameBoardColumn domain.Column
+			var sameBoardTask domain.Task
+			if tt.useAnotherColumn || tt.useAnotherTask {
+				sameBoardColumn = testutil.NewValidColumn(t, hierarchy.board.ID, "Another", 2)
+				CreateColumn(t, pool, &sameBoardColumn)
+			}
+			if tt.useAnotherTask {
+				sameBoardTask = testutil.NewValidTask(t, sameBoardColumn.ID, "Another", "another", 1)
+				CreateTask(t, pool, &sameBoardTask)
+			}
 
-		created := testutil.ValidTask(column.ID)
-		CreateTask(t, pool, &created)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := hierarchy.column
+			targetTask := hierarchy.task
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = sameBoardColumn
+			}
+			if tt.useColumnFromAnotherBoard {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
+			if tt.useAnotherTask {
+				targetTask = sameBoardTask
+			}
+			if tt.useMissingTask {
+				targetTask = hierarchy.missingTask
+			}
 
-		got, err := r.Get(context.Background(), board.OwnerID, board.ID, column.ID, created.ID)
-		if err != nil {
-			t.Fatalf("Get() error = %v", err)
-		}
-		if diff := cmp.Diff(created, got, testutil.CmpAllowUnexported()); diff != "" {
-			t.Errorf("Get() mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		anotherColumnID := domain.NewColumnID()
-		missingTaskID := domain.NewTaskID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-			taskID   *domain.TaskID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Another column", columnID: &anotherColumnID},
-			{name: "Missing task", taskID: &missingTaskID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
-				siblingColumn.ID = anotherColumnID
-				CreateColumn(t, pool, &siblingColumn)
-				task := testutil.ValidTask(column.ID)
-				CreateTask(t, pool, &task)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				taskID := task.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
+			got, err := r.Get(context.Background(), callerID, targetBoard.ID, targetColumn.ID, targetTask.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Get() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(hierarchy.task, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("Get() mismatch (-want +got):\n%s", diff)
 				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-				if tt.taskID != nil {
-					taskID = *tt.taskID
-				}
-
-				_, err := r.Get(context.Background(), callerID, boardID, columnID, taskID)
-				assertErrRowNotFound(t, err)
-			})
-		}
-	})
+			}
+		})
+	}
 }
 
 func TestTaskRepository_Update(t *testing.T) {
@@ -342,101 +359,113 @@ func TestTaskRepository_Update(t *testing.T) {
 		}
 	}
 
-	t.Run("Success", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name                      string
+		useAnotherOwner           bool
+		useMissingOwner           bool
+		useAnotherBoard           bool
+		useMissingBoard           bool
+		useAnotherColumn          bool
+		useColumnFromAnotherBoard bool
+		useMissingColumn          bool
+		useAnotherTask            bool
+		useMissingTask            bool
+		wantErr                   error
+	}{
+		{name: "Success"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another column", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useColumnFromAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from another column", useAnotherTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			var sameBoardColumn domain.Column
+			var sameBoardTask domain.Task
+			if tt.useAnotherColumn || tt.useAnotherTask {
+				sameBoardColumn = testutil.NewValidColumn(t, hierarchy.board.ID, "Another", 2)
+				CreateColumn(t, pool, &sameBoardColumn)
+			}
+			if tt.useAnotherTask {
+				sameBoardTask = testutil.NewValidTask(t, sameBoardColumn.ID, "Another", "another", 1)
+				CreateTask(t, pool, &sameBoardTask)
+			}
+			want := testutil.UpdateValidTask(t, &hierarchy.task, "Renamed", "Renamed description", hierarchy.task.UpdatedAt)
 
-		created := testutil.ValidTask(column.ID)
-		createdAtBeforeUpdate := time.Now().UTC()
-		updatedAtBeforeUpdate := createdAtBeforeUpdate
-		created.CreatedAt = createdAtBeforeUpdate
-		created.UpdatedAt = updatedAtBeforeUpdate
-		CreateTask(t, pool, &created)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := hierarchy.column
+			targetTask := hierarchy.task
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = sameBoardColumn
+			}
+			if tt.useColumnFromAnotherBoard {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
+			if tt.useAnotherTask {
+				targetTask = sameBoardTask
+			}
+			if tt.useMissingTask {
+				targetTask = hierarchy.missingTask
+			}
 
-		want := testutil.UpdateValidTask(t, &created, "Renamed", "Renamed description", testutil.Fixed5mFromNow())
-		updated, err := r.Update(context.Background(), board.OwnerID, board.ID, column.ID, created.ID, &want.Name, &want.Description)
-		if err != nil {
-			t.Fatalf("Update() error = %v", err)
-		}
+			got, err := r.Update(context.Background(), callerID, targetBoard.ID, targetColumn.ID, targetTask.ID, &want.Name, &want.Description)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Update() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				assertUpdatedTask(t, got, want)
+				return
+			}
 
-		assertUpdatedTask(t, updated, want)
-	})
+			if diff := cmp.Diff([]domain.Task{hierarchy.task}, ListTasksByColumnID(t, pool, hierarchy.column.ID), testutil.CmpAllowUnexported()); diff != "" {
+				t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 
 	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
-		task := testutil.ValidTask(column.ID)
-		CreateTask(t, pool, &task)
+		hierarchy := insertBoardHierarchy(t, pool)
 
-		got, err := r.Update(context.Background(), board.OwnerID, board.ID, column.ID, task.ID, nil, nil)
+		got, err := r.Update(
+			context.Background(),
+			hierarchy.board.OwnerID,
+			hierarchy.board.ID,
+			hierarchy.column.ID,
+			hierarchy.task.ID,
+			nil,
+			nil,
+		)
 		if err != nil {
 			t.Fatalf("Update() error = %v", err)
 		}
-		if diff := cmp.Diff(task, got, testutil.CmpAllowUnexported()); diff != "" {
+		if diff := cmp.Diff(hierarchy.task, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
-		}
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		anotherColumnID := domain.NewColumnID()
-		missingTaskID := domain.NewTaskID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-			taskID   *domain.TaskID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Another column", columnID: &anotherColumnID},
-			{name: "Missing task", taskID: &missingTaskID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
-				siblingColumn.ID = anotherColumnID
-				CreateColumn(t, pool, &siblingColumn)
-				task := testutil.ValidTask(column.ID)
-				CreateTask(t, pool, &task)
-				updatedName, err := domain.NewTaskName("Renamed")
-				if err != nil {
-					t.Fatalf("NewTaskName() error = %v", err)
-				}
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				taskID := task.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-				if tt.taskID != nil {
-					taskID = *tt.taskID
-				}
-
-				_, err = r.Update(context.Background(), callerID, boardID, columnID, taskID, &updatedName, nil)
-				assertErrRowNotFound(t, err)
-
-				stored := ListTasksByColumnID(t, pool, column.ID)
-				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
-				}
-			})
 		}
 	})
 }
@@ -444,53 +473,142 @@ func TestTaskRepository_Update(t *testing.T) {
 func TestTaskRepository_Move(t *testing.T) {
 	pool, r := taskRepoPrelude(t)
 
-	t.Run("Success move down within column", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name                            string
+		useAnotherOwner                 bool
+		useMissingOwner                 bool
+		useAnotherBoard                 bool
+		useMissingBoard                 bool
+		useAnotherSourceColumn          bool
+		useSourceColumnFromAnotherBoard bool
+		useMissingSourceColumn          bool
+		useAnotherTask                  bool
+		useMissingTask                  bool
+		useAnotherTargetColumn          bool
+		useMissingTargetColumn          bool
+		wantErr                         error
+	}{
+		{name: "Success move down within column"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another source column", useAnotherSourceColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Source column from another board", useSourceColumnFromAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing source column", useMissingSourceColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from another column", useAnotherTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Target column from another board", useAnotherTargetColumn: true, wantErr: repository.ErrTargetRowNotFound},
+		{name: "Missing target column", useMissingTargetColumn: true, wantErr: repository.ErrTargetRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			second := testutil.NewValidTask(t, hierarchy.column.ID, "Second", "second", 2)
+			third := testutil.NewValidTask(t, hierarchy.column.ID, "Third", "third", 3)
+			CreateTask(t, pool, &third)
+			CreateTask(t, pool, &second)
+			var sameBoardColumn domain.Column
+			var sameBoardTask domain.Task
+			if tt.useAnotherSourceColumn || tt.useAnotherTask {
+				sameBoardColumn = testutil.NewValidColumn(t, hierarchy.board.ID, "Another", 2)
+				CreateColumn(t, pool, &sameBoardColumn)
+			}
+			if tt.useAnotherTask {
+				sameBoardTask = testutil.NewValidTask(t, sameBoardColumn.ID, "Another", "another", 1)
+				CreateTask(t, pool, &sameBoardTask)
+			}
 
-		first := testutil.ValidTask(column.ID)
-		second := testutil.NewValidTask(t, column.ID, "Second", "second", 2)
-		third := testutil.NewValidTask(t, column.ID, "Third", "third", 3)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			currentColumn := hierarchy.column
+			targetTask := hierarchy.task
+			targetColumn := hierarchy.column
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherSourceColumn {
+				currentColumn = sameBoardColumn
+			}
+			if tt.useSourceColumnFromAnotherBoard {
+				currentColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingSourceColumn {
+				currentColumn = hierarchy.missingColumn
+			}
+			if tt.useAnotherTask {
+				targetTask = sameBoardTask
+			}
+			if tt.useMissingTask {
+				targetTask = hierarchy.missingTask
+			}
+			if tt.useAnotherTargetColumn {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingTargetColumn {
+				targetColumn = hierarchy.missingColumn
+			}
 
-		CreateTask(t, pool, &third)
-		CreateTask(t, pool, &first)
-		CreateTask(t, pool, &second)
+			targetPosition := testutil.NewValidTaskPosition(t, 3)
+			gotColumn, gotPosition, err := r.Move(
+				context.Background(),
+				callerID,
+				targetBoard.ID,
+				currentColumn.ID,
+				targetTask.ID,
+				targetColumn.ID,
+				targetPosition,
+			)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Move() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if gotColumn != hierarchy.column.ID {
+					t.Errorf("Move() column = %v, want %v", gotColumn, hierarchy.column.ID)
+				}
+				if gotPosition != targetPosition {
+					t.Errorf("Move() position = %v, want %v", gotPosition, targetPosition)
+				}
+			}
 
-		targetPosition := testutil.NewValidTaskPosition(t, 3)
-
-		gotColumn, gotPosition, err := r.Move(context.Background(), board.OwnerID, board.ID, column.ID, first.ID, column.ID, targetPosition)
-		if err != nil {
-			t.Fatalf("Move() error = %v", err)
-		}
-		if gotColumn != column.ID {
-			t.Fatalf("Move() column = %v, want %v", gotColumn, column.ID)
-		}
-		if gotPosition != targetPosition {
-			t.Fatalf("Move() position = %v, want %v", gotPosition, targetPosition)
-		}
-
-		got := ListTasksByColumnID(t, pool, column.ID)
-		if len(got) != 3 {
-			t.Fatalf("got %d tasks after move, want 3", len(got))
-		}
-		assertTaskIDAndPosition(t, &got[0], second.ID, 1)
-		assertTaskIDAndPosition(t, &got[1], third.ID, 2)
-		assertTaskIDAndPosition(t, &got[2], first.ID, 3)
-	})
+			got := ListTasksByColumnID(t, pool, hierarchy.column.ID)
+			if len(got) != 3 {
+				t.Fatalf("got %d tasks after move, want 3", len(got))
+			}
+			if tt.wantErr == nil {
+				assertTaskIDAndPosition(t, &got[0], second.ID, 1)
+				assertTaskIDAndPosition(t, &got[1], third.ID, 2)
+				assertTaskIDAndPosition(t, &got[2], hierarchy.task.ID, 3)
+				return
+			}
+			assertTaskIDAndPosition(t, &got[0], hierarchy.task.ID, 1)
+			assertTaskIDAndPosition(t, &got[1], second.ID, 2)
+			assertTaskIDAndPosition(t, &got[2], third.ID, 3)
+		})
+	}
 
 	t.Run("Success move up within column", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
-
-		first := testutil.ValidTask(column.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		column := hierarchy.column
 		second := testutil.NewValidTask(t, column.ID, "Second", "second", 2)
 		third := testutil.NewValidTask(t, column.ID, "Third", "third", 3)
 
 		CreateTask(t, pool, &second)
 		CreateTask(t, pool, &third)
-		CreateTask(t, pool, &first)
 
 		targetPosition := testutil.NewValidTaskPosition(t, 1)
 
@@ -510,20 +628,19 @@ func TestTaskRepository_Move(t *testing.T) {
 			t.Fatalf("got %d tasks after move, want 3", len(got))
 		}
 		assertTaskIDAndPosition(t, &got[0], third.ID, 1)
-		assertTaskIDAndPosition(t, &got[1], first.ID, 2)
+		assertTaskIDAndPosition(t, &got[1], hierarchy.task.ID, 2)
 		assertTaskIDAndPosition(t, &got[2], second.ID, 3)
 	})
 
 	t.Run("Success no-op", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
-
-		first := testutil.ValidTask(column.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		column := hierarchy.column
 		second := testutil.NewValidTask(t, column.ID, "Second", "second", 2)
 
 		CreateTask(t, pool, &second)
-		CreateTask(t, pool, &first)
 
 		targetPosition := testutil.NewValidTaskPosition(t, 2)
 
@@ -542,22 +659,21 @@ func TestTaskRepository_Move(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("got %d tasks after no-op move, want 2", len(got))
 		}
-		assertTaskIDAndPosition(t, &got[0], first.ID, 1)
+		assertTaskIDAndPosition(t, &got[0], hierarchy.task.ID, 1)
 		assertTaskIDAndPosition(t, &got[1], second.ID, 2)
 	})
 
 	t.Run("Index out of bounds within column", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
-
-		first := testutil.ValidTask(column.ID)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		column := hierarchy.column
 		second := testutil.NewValidTask(t, column.ID, "Second", "second", 2)
 		third := testutil.NewValidTask(t, column.ID, "Third", "third", 3)
 
 		CreateTask(t, pool, &second)
 		CreateTask(t, pool, &third)
-		CreateTask(t, pool, &first)
 
 		targetPosition := testutil.NewValidTaskPosition(t, 4)
 
@@ -570,7 +686,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		if len(got) != 3 {
 			t.Fatalf("got %d tasks after failed move, want 3", len(got))
 		}
-		assertTaskIDAndPosition(t, &got[0], first.ID, 1)
+		assertTaskIDAndPosition(t, &got[0], hierarchy.task.ID, 1)
 		assertTaskIDAndPosition(t, &got[1], second.ID, 2)
 		assertTaskIDAndPosition(t, &got[2], third.ID, 3)
 	})
@@ -578,11 +694,13 @@ func TestTaskRepository_Move(t *testing.T) {
 	t.Run("Success move across columns into middle", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, columnA := insertFixedUserBoardAndColumn(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		columnA := hierarchy.column
+		a1 := hierarchy.task
 		columnB := testutil.NewValidColumn(t, board.ID, "In Progress", 2)
 		CreateColumn(t, pool, &columnB)
 
-		a1 := testutil.ValidTask(columnA.ID)
 		a2 := testutil.NewValidTask(t, columnA.ID, "A2", "a2", 2)
 		a3 := testutil.NewValidTask(t, columnA.ID, "A3", "a3", 3)
 
@@ -590,7 +708,6 @@ func TestTaskRepository_Move(t *testing.T) {
 		b2 := testutil.NewValidTask(t, columnB.ID, "B2", "b2", 2)
 
 		CreateTask(t, pool, &a3)
-		CreateTask(t, pool, &a1)
 		CreateTask(t, pool, &a2)
 		CreateTask(t, pool, &b2)
 		CreateTask(t, pool, &b1)
@@ -627,15 +744,16 @@ func TestTaskRepository_Move(t *testing.T) {
 	t.Run("Success move across columns to append", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, columnA := insertFixedUserBoardAndColumn(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		columnA := hierarchy.column
+		a1 := hierarchy.task
 		columnB := testutil.NewValidColumn(t, board.ID, "Done", 2)
 		CreateColumn(t, pool, &columnB)
 
-		a1 := testutil.ValidTask(columnA.ID)
 		b1 := testutil.NewValidTask(t, columnB.ID, "B1", "b1", 1)
 
 		CreateTask(t, pool, &b1)
-		CreateTask(t, pool, &a1)
 
 		targetPosition := testutil.NewValidTaskPosition(t, 2)
 
@@ -666,15 +784,16 @@ func TestTaskRepository_Move(t *testing.T) {
 	t.Run("Index out of bounds across columns", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
 
-		board, columnA := insertFixedUserBoardAndColumn(t, pool)
+		hierarchy := insertBoardHierarchy(t, pool)
+		board := hierarchy.board
+		columnA := hierarchy.column
+		a1 := hierarchy.task
 		columnB := testutil.NewValidColumn(t, board.ID, "Done", 2)
 		CreateColumn(t, pool, &columnB)
 
-		a1 := testutil.ValidTask(columnA.ID)
 		b1 := testutil.NewValidTask(t, columnB.ID, "B1", "b1", 1)
 
 		CreateTask(t, pool, &b1)
-		CreateTask(t, pool, &a1)
 
 		targetPosition := testutil.NewValidTaskPosition(t, 3)
 
@@ -695,173 +814,116 @@ func TestTaskRepository_Move(t *testing.T) {
 		}
 		assertTaskIDAndPosition(t, &gotB[0], b1.ID, 1)
 	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		anotherColumnID := domain.NewColumnID()
-		missingTaskID := domain.NewTaskID()
-		otherBoardColumnID := domain.NewColumnID()
-		tests := []struct {
-			name            string
-			callerID        *domain.UserID
-			boardID         *domain.BoardID
-			currentColumnID *domain.ColumnID
-			taskID          *domain.TaskID
-			targetColumnID  *domain.ColumnID
-			wantErr         error
-		}{
-			{name: "Another owner", callerID: &otherUserID, wantErr: repository.ErrRowNotFound},
-			{name: "Missing board", boardID: &missingBoardID, wantErr: repository.ErrRowNotFound},
-			{name: "Another source column", currentColumnID: &anotherColumnID, wantErr: repository.ErrRowNotFound},
-			{name: "Missing task", taskID: &missingTaskID, wantErr: repository.ErrRowNotFound},
-			{name: "Target column from another board", targetColumnID: &otherBoardColumnID, wantErr: repository.ErrTargetRowNotFound},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				targetColumn := testutil.NewValidColumn(t, board.ID, "Target", 2)
-				targetColumn.ID = anotherColumnID
-				CreateColumn(t, pool, &targetColumn)
-				otherBoard := testutil.ValidBoard()
-				CreateBoard(t, pool, &otherBoard)
-				otherBoardColumn := testutil.ValidColumn(otherBoard.ID)
-				otherBoardColumn.ID = otherBoardColumnID
-				CreateColumn(t, pool, &otherBoardColumn)
-				task := testutil.ValidTask(column.ID)
-				CreateTask(t, pool, &task)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				currentColumnID := column.ID
-				taskID := task.ID
-				targetColumnID := targetColumn.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
-				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.currentColumnID != nil {
-					currentColumnID = *tt.currentColumnID
-				}
-				if tt.taskID != nil {
-					taskID = *tt.taskID
-				}
-				if tt.targetColumnID != nil {
-					targetColumnID = *tt.targetColumnID
-				}
-
-				_, _, err := r.Move(context.Background(), callerID, boardID, currentColumnID, taskID, targetColumnID, task.Position)
-				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Move() error = %v, want %v", err, tt.wantErr)
-				}
-
-				stored := ListTasksByColumnID(t, pool, column.ID)
-				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
-				}
-			})
-		}
-	})
 }
 
 func TestTaskRepository_Delete(t *testing.T) {
 	pool, r := taskRepoPrelude(t)
 
-	t.Run("Success shift positions", func(t *testing.T) {
-		testutil.TruncateAllTables(t, pool)
+	tests := []struct {
+		name                      string
+		useAnotherOwner           bool
+		useMissingOwner           bool
+		useAnotherBoard           bool
+		useMissingBoard           bool
+		useAnotherColumn          bool
+		useColumnFromAnotherBoard bool
+		useMissingColumn          bool
+		useAnotherTask            bool
+		useMissingTask            bool
+		wantErr                   error
+	}{
+		{name: "Success shift positions"},
+		{name: "Another owner", useAnotherOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing owner", useMissingOwner: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another board", useAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing board", useMissingBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Another column", useAnotherColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Column from another board", useColumnFromAnotherBoard: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from another column", useAnotherTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
+	}
 
-		board, column := insertFixedUserBoardAndColumn(t, pool)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.TruncateAllTables(t, pool)
+			hierarchy := insertBoardHierarchy(t, pool)
+			second := testutil.NewValidTask(t, hierarchy.column.ID, "Second", "second", 2)
+			third := testutil.NewValidTask(t, hierarchy.column.ID, "Third", "third", 3)
+			CreateTask(t, pool, &third)
+			CreateTask(t, pool, &second)
+			var sameBoardColumn domain.Column
+			var sameBoardTask domain.Task
+			if tt.useAnotherColumn || tt.useAnotherTask {
+				sameBoardColumn = testutil.NewValidColumn(t, hierarchy.board.ID, "Another", 2)
+				CreateColumn(t, pool, &sameBoardColumn)
+			}
+			if tt.useAnotherTask {
+				sameBoardTask = testutil.NewValidTask(t, sameBoardColumn.ID, "Another", "another", 1)
+				CreateTask(t, pool, &sameBoardTask)
+			}
 
-		first := testutil.ValidTask(column.ID)
-		second := testutil.NewValidTask(t, column.ID, "Second", "second", 2)
-		third := testutil.NewValidTask(t, column.ID, "Third", "third", 3)
+			callerID := hierarchy.board.OwnerID
+			targetBoard := hierarchy.board
+			targetColumn := hierarchy.column
+			targetTask := second
+			if tt.useAnotherOwner {
+				callerID = hierarchy.anotherBoard.OwnerID
+			}
+			if tt.useMissingOwner {
+				callerID = hierarchy.missingBoard.OwnerID
+			}
+			if tt.useAnotherBoard {
+				targetBoard = hierarchy.anotherBoard
+			}
+			if tt.useMissingBoard {
+				targetBoard = hierarchy.missingBoard
+			}
+			if tt.useAnotherColumn {
+				targetColumn = sameBoardColumn
+			}
+			if tt.useColumnFromAnotherBoard {
+				targetColumn = hierarchy.anotherColumn
+			}
+			if tt.useMissingColumn {
+				targetColumn = hierarchy.missingColumn
+			}
+			if tt.useAnotherTask {
+				targetTask = sameBoardTask
+			}
+			if tt.useMissingTask {
+				targetTask = hierarchy.missingTask
+			}
 
-		CreateTask(t, pool, &third)
-		CreateTask(t, pool, &first)
-		CreateTask(t, pool, &second)
+			err := r.Delete(context.Background(), callerID, targetBoard.ID, targetColumn.ID, targetTask.ID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Delete() error = %v, want %v", err, tt.wantErr)
+			}
 
-		err := r.Delete(context.Background(), board.OwnerID, board.ID, column.ID, second.ID)
-		if err != nil {
-			t.Fatalf("Delete() error = %v", err)
-		}
-
-		got := ListTasksByColumnID(t, pool, column.ID)
-
-		if len(got) != 2 {
-			t.Fatalf("got %d tasks after delete, want 2", len(got))
-		}
-		assertTaskIDAndPosition(t, &got[0], first.ID, 1)
-		assertTaskIDAndPosition(t, &got[1], third.ID, 2)
-	})
-
-	t.Run("Not found", func(t *testing.T) {
-		otherUserID := domain.NewUserID()
-		missingBoardID := domain.NewBoardID()
-		anotherColumnID := domain.NewColumnID()
-		missingTaskID := domain.NewTaskID()
-		tests := []struct {
-			name     string
-			callerID *domain.UserID
-			boardID  *domain.BoardID
-			columnID *domain.ColumnID
-			taskID   *domain.TaskID
-		}{
-			{name: "Another owner", callerID: &otherUserID},
-			{name: "Missing board", boardID: &missingBoardID},
-			{name: "Another column", columnID: &anotherColumnID},
-			{name: "Missing task", taskID: &missingTaskID},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				testutil.TruncateAllTables(t, pool)
-
-				board, column := insertFixedUserBoardAndColumn(t, pool)
-				siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
-				siblingColumn.ID = anotherColumnID
-				CreateColumn(t, pool, &siblingColumn)
-				task := testutil.ValidTask(column.ID)
-				CreateTask(t, pool, &task)
-
-				callerID := board.OwnerID
-				boardID := board.ID
-				columnID := column.ID
-				taskID := task.ID
-				if tt.callerID != nil {
-					callerID = *tt.callerID
+			got := ListTasksByColumnID(t, pool, hierarchy.column.ID)
+			if tt.wantErr == nil {
+				if len(got) != 2 {
+					t.Fatalf("got %d tasks after delete, want 2", len(got))
 				}
-				if tt.boardID != nil {
-					boardID = *tt.boardID
-				}
-				if tt.columnID != nil {
-					columnID = *tt.columnID
-				}
-				if tt.taskID != nil {
-					taskID = *tt.taskID
-				}
-
-				err := r.Delete(context.Background(), callerID, boardID, columnID, taskID)
-				assertErrRowNotFound(t, err)
-
-				stored := ListTasksByColumnID(t, pool, column.ID)
-				if diff := cmp.Diff([]domain.Task{task}, stored, testutil.CmpAllowUnexported()); diff != "" {
-					t.Errorf("stored tasks mismatch (-want +got):\n%s", diff)
-				}
-			})
-		}
-	})
+				assertTaskIDAndPosition(t, &got[0], hierarchy.task.ID, 1)
+				assertTaskIDAndPosition(t, &got[1], third.ID, 2)
+				return
+			}
+			if len(got) != 3 {
+				t.Fatalf("got %d tasks after failed delete, want 3", len(got))
+			}
+			assertTaskIDAndPosition(t, &got[0], hierarchy.task.ID, 1)
+			assertTaskIDAndPosition(t, &got[1], second.ID, 2)
+			assertTaskIDAndPosition(t, &got[2], third.ID, 3)
+		})
+	}
 }
 
 func TestLockTaskColumns_BlocksSecondTransaction(t *testing.T) {
 	pool, _ := taskRepoPrelude(t)
 	testutil.TruncateAllTables(t, pool)
 
-	board, column := insertFixedUserBoardAndColumn(t, pool)
+	hierarchy := insertBoardHierarchy(t, pool)
 
 	beginTx := func(id string) pgx.Tx {
 		tx, err := pool.Begin(context.Background())
@@ -886,7 +948,7 @@ func TestLockTaskColumns_BlocksSecondTransaction(t *testing.T) {
 	}
 
 	lockTaskColumns := func(tx pgx.Tx) error {
-		return repository.LockTaskColumns(context.Background(), tx, board.OwnerID, board.ID, column.ID)
+		return repository.LockTaskColumns(context.Background(), tx, hierarchy.board.OwnerID, hierarchy.board.ID, hierarchy.column.ID)
 	}
 
 	tx1 := beginTx("1")
