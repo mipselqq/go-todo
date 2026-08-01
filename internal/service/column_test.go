@@ -24,7 +24,8 @@ func TestColumn_Create(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Board not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -69,7 +70,8 @@ func TestColumn_ListByBoardID(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Board not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -108,7 +110,8 @@ func TestColumn_Update(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Column not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrColumnNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -154,7 +157,8 @@ func TestColumn_Move(t *testing.T) {
 		{name: "Success"},
 		{name: "Column not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrColumnNotFound},
 		{name: "Index out of bounds", repoErr: repository.ErrIndexOutOfBounds, wantErr: service.ErrIndexOutOfBounds},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -195,7 +199,8 @@ func TestColumn_Delete(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Column not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrColumnNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {

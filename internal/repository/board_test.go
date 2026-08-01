@@ -114,6 +114,7 @@ func TestBoardRepository_Get(t *testing.T) {
 	t.Run("Not found", func(t *testing.T) {
 		otherUserID := domain.NewUserID()
 		missingBoardID := domain.NewBoardID()
+
 		tests := []struct {
 			name     string
 			callerID *domain.UserID

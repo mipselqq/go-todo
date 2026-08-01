@@ -25,7 +25,8 @@ func TestTask_Create(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Column not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrColumnNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -72,7 +73,8 @@ func TestTask_ListByColumnID(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Column not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrColumnNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -117,7 +119,8 @@ func TestTask_Update(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Task not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrTaskNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -167,7 +170,8 @@ func TestTask_Move(t *testing.T) {
 		{name: "Task not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrTaskNotFound},
 		{name: "Target column not found", repoErr: repository.ErrTargetRowNotFound, wantErr: service.ErrColumnNotFound},
 		{name: "Index out of bounds", repoErr: repository.ErrIndexOutOfBounds, wantErr: service.ErrIndexOutOfBounds},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -222,7 +226,8 @@ func TestTask_Delete(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Task not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrTaskNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {

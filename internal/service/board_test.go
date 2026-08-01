@@ -16,31 +16,47 @@ import (
 func TestBoard_Create(t *testing.T) {
 	board := testutil.ValidBoard()
 
-	repo := NewMockBoardRepository(t)
-	repo.CreateFunc = func(
-		ctx context.Context,
-		ownerID domain.UserID,
-		name domain.BoardName,
-		description domain.BoardDescription,
-	) (domain.Board, error) {
-		if ownerID != board.OwnerID {
-			t.Errorf("got ownerID %v, want %v", ownerID, board.OwnerID)
-		}
-		if name != board.Name {
-			t.Errorf("got name %v, want %v", name, board.Name)
-		}
-		if description != board.Description {
-			t.Errorf("got description %v, want %v", description, board.Description)
-		}
-		return board, nil
+	tests := []struct {
+		name    string
+		repoErr error
+		wantErr error
+	}{
+		{name: "Success"},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
-	got, err := service.NewBoard(repo).Create(context.Background(), board.OwnerID, board.Name, board.Description)
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if diff := cmp.Diff(board, got, testutil.CmpAllowUnexported()); diff != "" {
-		t.Errorf("Create() mismatch (-want +got):\n%s", diff)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := NewMockBoardRepository(t)
+			repo.CreateFunc = func(
+				ctx context.Context,
+				ownerID domain.UserID,
+				name domain.BoardName,
+				description domain.BoardDescription,
+			) (domain.Board, error) {
+				if ownerID != board.OwnerID {
+					t.Errorf("got ownerID %v, want %v", ownerID, board.OwnerID)
+				}
+				if name != board.Name {
+					t.Errorf("got name %v, want %v", name, board.Name)
+				}
+				if description != board.Description {
+					t.Errorf("got description %v, want %v", description, board.Description)
+				}
+				return board, tt.repoErr
+			}
+
+			got, err := service.NewBoard(repo).Create(context.Background(), board.OwnerID, board.Name, board.Description)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(board, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("Create() mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
 	}
 }
 
@@ -49,20 +65,36 @@ func TestBoard_ListByOwnerID(t *testing.T) {
 
 	want := []domain.Board{board}
 
-	repo := NewMockBoardRepository(t)
-	repo.ListByOwnerIDFunc = func(ctx context.Context, ownerID domain.UserID) ([]domain.Board, error) {
-		if ownerID != board.OwnerID {
-			t.Errorf("got ownerID %v, want %v", ownerID, board.OwnerID)
-		}
-		return want, nil
+	tests := []struct {
+		name    string
+		repoErr error
+		wantErr error
+	}{
+		{name: "Success"},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
-	got, err := service.NewBoard(repo).ListByOwnerID(context.Background(), board.OwnerID)
-	if err != nil {
-		t.Fatalf("ListByOwnerID() error = %v", err)
-	}
-	if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
-		t.Errorf("ListByOwnerID() mismatch (-want +got):\n%s", diff)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := NewMockBoardRepository(t)
+			repo.ListByOwnerIDFunc = func(ctx context.Context, ownerID domain.UserID) ([]domain.Board, error) {
+				if ownerID != board.OwnerID {
+					t.Errorf("got ownerID %v, want %v", ownerID, board.OwnerID)
+				}
+				return want, tt.repoErr
+			}
+
+			got, err := service.NewBoard(repo).ListByOwnerID(context.Background(), board.OwnerID)
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("ListByOwnerID() error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(want, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("ListByOwnerID() mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
 	}
 }
 
@@ -76,8 +108,9 @@ func TestBoard_Get(t *testing.T) {
 		wantZero bool
 	}{
 		{name: "Success"},
-		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound, wantZero: true},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal, wantZero: true},
+		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -97,14 +130,11 @@ func TestBoard_Get(t *testing.T) {
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("Get() error = %v, want %v", err, tt.wantErr)
 			}
-			if tt.wantZero {
-				if got != (domain.Board{}) {
-					t.Errorf("Get() = %v, want zero board", got)
+
+			if tt.wantErr == nil {
+				if diff := cmp.Diff(board, got, testutil.CmpAllowUnexported()); diff != "" {
+					t.Errorf("Get() mismatch (-want +got):\n%s", diff)
 				}
-				return
-			}
-			if diff := cmp.Diff(board, got, testutil.CmpAllowUnexported()); diff != "" {
-				t.Errorf("Get() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -132,7 +162,8 @@ func TestBoard_GetAggregate(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -180,7 +211,8 @@ func TestBoard_Update(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
@@ -225,7 +257,8 @@ func TestBoard_Delete(t *testing.T) {
 	}{
 		{name: "Success"},
 		{name: "Not found", repoErr: repository.ErrRowNotFound, wantErr: service.ErrBoardNotFound},
-		{name: "Repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Internal repository error", repoErr: repository.ErrInternal, wantErr: service.ErrInternal},
+		{name: "Unexpected repository error", repoErr: errors.New("db exploded"), wantErr: service.ErrInternal},
 	}
 
 	for _, tt := range tests {
