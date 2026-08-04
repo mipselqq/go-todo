@@ -13,14 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func CreateFixedUser(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-
-	id := testutil.ValidUserID()
-	domainEmail := testutil.ValidEmail()
-	CreateUser(t, pool, id, domainEmail, testutil.ValidPasswordHash())
-}
-
 func CreateUser(t *testing.T, pool *pgxpool.Pool, id domain.UserID, email domain.Email, hash domain.PasswordHash) {
 	t.Helper()
 
@@ -215,8 +207,8 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 	unrelatedColumn := testutil.ValidColumn(unrelatedBoard.ID)
 	unrelatedTask := testutil.ValidTask(unrelatedColumn.ID)
 
-	CreateFixedUser(t, pool)
-	insertUnrelatedUser(t, pool, unrelatedBoard.OwnerID)
+	CreateUser(t, pool, board.OwnerID, testutil.ValidEmail(), testutil.ValidPasswordHash())
+	CreateUser(t, pool, unrelatedBoard.OwnerID, testutil.AnotherValidEmail(), testutil.ValidPasswordHash())
 	CreateBoard(t, pool, &board)
 	CreateColumn(t, pool, &column)
 	CreateTask(t, pool, &task)
@@ -279,16 +271,6 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	}
 
 	return tasks
-}
-
-func insertUnrelatedUser(t *testing.T, pool *pgxpool.Pool, userID domain.UserID) {
-	t.Helper()
-
-	email, err := domain.NewEmail("another@example.com")
-	if err != nil {
-		t.Fatalf("NewEmail() error = %v", err)
-	}
-	CreateUser(t, pool, userID, email, testutil.ValidPasswordHash())
 }
 
 func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tableName string, columnNames ...string) {

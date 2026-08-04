@@ -97,6 +97,10 @@ func ValidEmail() domain.Email {
 	return must(domain.NewEmail, "test@example.com")
 }
 
+func AnotherValidEmail() domain.Email {
+	return must(domain.NewEmail, "test2@example.com")
+}
+
 func ValidPassword() domain.UserPassword {
 	return must(domain.NewUserPassword, "qwerty")
 }
