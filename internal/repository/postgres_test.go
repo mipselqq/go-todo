@@ -191,6 +191,17 @@ type boardHierarchyFixture struct {
 	nonexistentTask   domain.Task
 }
 
+// setupDefaultBoardHierarchy creates this fixture:
+//
+// board
+// ├── column -> task
+// └── siblingColumn -> siblingTask
+// unrelatedBoard
+// └── unrelatedColumn -> unrelatedTask
+// nonexistentBoard
+// └── nonexistentColumn -> nonexistentTask
+//
+// All entities except 'nonexistent' are inserted into the database.
 func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchyFixture {
 	t.Helper()
 
