@@ -238,7 +238,7 @@ func TestTaskRepository_Get(t *testing.T) {
 		useSiblingColumn   bool
 		useUnrelatedColumn bool
 		useMissingColumn   bool
-		useSiblingTask     bool
+		useParallelTask    bool
 		useMissingTask     bool
 		wantErr            error
 	}{
@@ -250,7 +250,7 @@ func TestTaskRepository_Get(t *testing.T) {
 		{name: "Sibling column", useSiblingColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Unrelated column", useUnrelatedColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
-		{name: "Task from sibling column", useSiblingTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from sibling column", useParallelTask: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
 	}
 
@@ -283,8 +283,8 @@ func TestTaskRepository_Get(t *testing.T) {
 			if tt.useMissingColumn {
 				column = fixture.nonexistentColumn
 			}
-			if tt.useSiblingTask {
-				task = fixture.siblingTask
+			if tt.useParallelTask {
+				task = fixture.parallelTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -350,7 +350,7 @@ func TestTaskRepository_Update(t *testing.T) {
 		useSiblingColumn   bool
 		useUnrelatedColumn bool
 		useMissingColumn   bool
-		useSiblingTask     bool
+		useParalleltask    bool
 		useMissingTask     bool
 		wantErr            error
 	}{
@@ -362,7 +362,7 @@ func TestTaskRepository_Update(t *testing.T) {
 		{name: "Sibling column", useSiblingColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Unrelated column", useUnrelatedColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
-		{name: "Task from sibling column", useSiblingTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from sibling column", useParalleltask: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
 	}
 
@@ -397,8 +397,8 @@ func TestTaskRepository_Update(t *testing.T) {
 			if tt.useMissingColumn {
 				column = fixture.nonexistentColumn
 			}
-			if tt.useSiblingTask {
-				task = fixture.siblingTask
+			if tt.useParalleltask {
+				task = fixture.parallelTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -454,7 +454,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		useSiblingSourceColumn        bool
 		useUnrelatedSourceColumn      bool
 		useMissingSourceColumn        bool
-		useSiblingTask                bool
+		useParallelTask               bool
 		useMissingTask                bool
 		useUnrelatedDestinationColumn bool
 		useMissingDestinationColumn   bool
@@ -468,7 +468,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		{name: "Sibling source column", useSiblingSourceColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Unrelated source column", useUnrelatedSourceColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing source column", useMissingSourceColumn: true, wantErr: repository.ErrRowNotFound},
-		{name: "Task from sibling column", useSiblingTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from sibling column", useParallelTask: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
 		{name: "Unrelated destination column", useUnrelatedDestinationColumn: true, wantErr: repository.ErrTargetRowNotFound},
 		{name: "Missing destination column", useMissingDestinationColumn: true, wantErr: repository.ErrTargetRowNotFound},
@@ -508,8 +508,8 @@ func TestTaskRepository_Move(t *testing.T) {
 			if tt.useMissingSourceColumn {
 				sourceColumn = fixture.nonexistentColumn
 			}
-			if tt.useSiblingTask {
-				task = fixture.siblingTask
+			if tt.useParallelTask {
+				task = fixture.parallelTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask
@@ -664,7 +664,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		secondTask := testutil.NewValidTask(t, sourceColumn.ID, "A2", "a2", 2)
 		thirdTask := testutil.NewValidTask(t, sourceColumn.ID, "A3", "a3", 3)
 
-		firstDestinationTask := fixture.siblingTask
+		firstDestinationTask := fixture.parallelTask
 		secondDestinationTask := testutil.NewValidTask(t, destinationColumn.ID, "B2", "b2", 2)
 
 		CreateTask(t, pool, &thirdTask)
@@ -708,7 +708,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		sourceColumn := fixture.column
 		firstTask := fixture.task
 		destinationColumn := fixture.siblingColumn
-		firstDestinationTask := fixture.siblingTask
+		firstDestinationTask := fixture.parallelTask
 
 		destinationPosition := testutil.NewValidTaskPosition(t, 2)
 
@@ -744,7 +744,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		sourceColumn := fixture.column
 		firstTask := fixture.task
 		destinationColumn := fixture.siblingColumn
-		firstDestinationTask := fixture.siblingTask
+		firstDestinationTask := fixture.parallelTask
 
 		destinationPosition := testutil.NewValidTaskPosition(t, 3)
 
@@ -779,7 +779,7 @@ func TestTaskRepository_Delete(t *testing.T) {
 		useSiblingColumn   bool
 		useUnrelatedColumn bool
 		useMissingColumn   bool
-		useSiblingTask     bool
+		useParallelTask    bool
 		useMissingTask     bool
 		wantErr            error
 	}{
@@ -791,7 +791,7 @@ func TestTaskRepository_Delete(t *testing.T) {
 		{name: "Sibling column", useSiblingColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Unrelated column", useUnrelatedColumn: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing column", useMissingColumn: true, wantErr: repository.ErrRowNotFound},
-		{name: "Task from sibling column", useSiblingTask: true, wantErr: repository.ErrRowNotFound},
+		{name: "Task from sibling column", useParallelTask: true, wantErr: repository.ErrRowNotFound},
 		{name: "Missing task", useMissingTask: true, wantErr: repository.ErrRowNotFound},
 	}
 
@@ -828,8 +828,8 @@ func TestTaskRepository_Delete(t *testing.T) {
 			if tt.useMissingColumn {
 				column = fixture.nonexistentColumn
 			}
-			if tt.useSiblingTask {
-				task = fixture.siblingTask
+			if tt.useParallelTask {
+				task = fixture.parallelTask
 			}
 			if tt.useMissingTask {
 				task = fixture.nonexistentTask

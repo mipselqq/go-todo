@@ -174,7 +174,7 @@ type boardHierarchyFixture struct {
 	column            domain.Column
 	task              domain.Task
 	siblingColumn     domain.Column
-	siblingTask       domain.Task
+	parallelTask      domain.Task
 	unrelatedBoard    domain.Board
 	unrelatedColumn   domain.Column
 	unrelatedTask     domain.Task
@@ -201,7 +201,7 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 	column := testutil.ValidColumn(board.ID)
 	task := testutil.ValidTask(column.ID)
 	siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
-	siblingTask := testutil.ValidTask(siblingColumn.ID)
+	parallelTask := testutil.ValidTask(siblingColumn.ID)
 
 	unrelatedBoard := testutil.ValidBoardForOwner(domain.NewUserID())
 	unrelatedColumn := testutil.ValidColumn(unrelatedBoard.ID)
@@ -213,7 +213,7 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 	CreateColumn(t, pool, &column)
 	CreateTask(t, pool, &task)
 	CreateColumn(t, pool, &siblingColumn)
-	CreateTask(t, pool, &siblingTask)
+	CreateTask(t, pool, &parallelTask)
 	CreateBoard(t, pool, &unrelatedBoard)
 	CreateColumn(t, pool, &unrelatedColumn)
 	CreateTask(t, pool, &unrelatedTask)
@@ -227,7 +227,7 @@ func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchy
 		column:            column,
 		task:              task,
 		siblingColumn:     siblingColumn,
-		siblingTask:       siblingTask,
+		parallelTask:      parallelTask,
 		unrelatedBoard:    unrelatedBoard,
 		unrelatedColumn:   unrelatedColumn,
 		unrelatedTask:     unrelatedTask,
