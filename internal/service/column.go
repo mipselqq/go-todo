@@ -10,41 +10,27 @@ import (
 )
 
 type columnRepository interface {
-	Create(ctx context.Context, boardID domain.BoardID, name domain.ColumnName, description domain.ColumnDescription) (domain.Column, error)
-	ListByBoardID(ctx context.Context, boardID domain.BoardID) ([]domain.Column, error)
-	Get(ctx context.Context, columnID domain.ColumnID) (domain.Column, error)
-	Update(ctx context.Context, boardID domain.BoardID, columnID domain.ColumnID, name *domain.ColumnName, description *domain.ColumnDescription) (domain.Column, error)
-	Move(ctx context.Context, boardID domain.BoardID, columnID domain.ColumnID, targetPosition domain.ColumnPosition) (domain.ColumnPosition, error)
-	Delete(ctx context.Context, boardID domain.BoardID, columnID domain.ColumnID) error
-}
-
-type columnBoardRepository interface {
-	Get(ctx context.Context, boardID domain.BoardID) (domain.Board, error)
+	Create(ctx context.Context, callerID domain.UserID, boardID domain.BoardID, name domain.ColumnName, description domain.ColumnDescription) (domain.Column, error)
+	ListByBoardID(ctx context.Context, callerID domain.UserID, boardID domain.BoardID) ([]domain.Column, error)
+	Update(ctx context.Context, callerID domain.UserID, boardID domain.BoardID, columnID domain.ColumnID, name *domain.ColumnName, description *domain.ColumnDescription) (domain.Column, error)
+	Move(ctx context.Context, callerID domain.UserID, boardID domain.BoardID, columnID domain.ColumnID, targetPosition domain.ColumnPosition) (domain.ColumnPosition, error)
+	Delete(ctx context.Context, callerID domain.UserID, boardID domain.BoardID, columnID domain.ColumnID) error
 }
 
 type column struct {
 	columnRepo columnRepository
-	boardRepo  columnBoardRepository
 }
 
-func NewColumn(columnRepo columnRepository, boardRepo columnBoardRepository) *column {
-	return &column{columnRepo: columnRepo, boardRepo: boardRepo}
+func NewColumn(columnRepo columnRepository) *column {
+	return &column{columnRepo: columnRepo}
 }
 
 func (s *column) Create(ctx context.Context, callerID domain.UserID, boardID domain.BoardID, name domain.ColumnName, description domain.ColumnDescription) (domain.Column, error) {
-	board, err := s.boardRepo.Get(ctx, boardID)
+	column, err := s.columnRepo.Create(ctx, callerID, boardID, name, description)
 	if err != nil {
 		if errors.Is(err, repository.ErrRowNotFound) {
 			return domain.Column{}, ErrBoardNotFound
 		}
-		return domain.Column{}, fmt.Errorf("column service: create get board: %v: %w", err, ErrInternal)
-	}
-	if board.OwnerID != callerID {
-		return domain.Column{}, ErrBoardNotFound
-	}
-
-	column, err := s.columnRepo.Create(ctx, boardID, name, description)
-	if err != nil {
 		return domain.Column{}, fmt.Errorf("column service: create: %v: %w", err, ErrInternal)
 	}
 
@@ -52,20 +38,11 @@ func (s *column) Create(ctx context.Context, callerID domain.UserID, boardID dom
 }
 
 func (s *column) ListByBoardID(ctx context.Context, callerID domain.UserID, boardID domain.BoardID) ([]domain.Column, error) {
-	board, err := s.boardRepo.Get(ctx, boardID)
+	columns, err := s.columnRepo.ListByBoardID(ctx, callerID, boardID)
 	if err != nil {
 		if errors.Is(err, repository.ErrRowNotFound) {
 			return nil, ErrBoardNotFound
 		}
-		return nil, fmt.Errorf("column service: list by board id get board: %v: %w", err, ErrInternal)
-	}
-
-	if board.OwnerID != callerID {
-		return nil, ErrBoardNotFound
-	}
-
-	columns, err := s.columnRepo.ListByBoardID(ctx, boardID)
-	if err != nil {
 		return nil, fmt.Errorf("column service: list by board id: %v: %w", err, ErrInternal)
 	}
 
@@ -80,33 +57,7 @@ func (s *column) Update(
 	name *domain.ColumnName,
 	description *domain.ColumnDescription,
 ) (domain.Column, error) {
-	board, err := s.boardRepo.Get(ctx, boardID)
-	if err != nil {
-		if errors.Is(err, repository.ErrRowNotFound) {
-			return domain.Column{}, ErrColumnNotFound
-		}
-		return domain.Column{}, fmt.Errorf("column service: update get board: %v: %w", err, ErrInternal)
-	}
-	if board.OwnerID != callerID {
-		return domain.Column{}, ErrColumnNotFound
-	}
-
-	column, err := s.columnRepo.Get(ctx, columnID)
-	if err != nil {
-		if errors.Is(err, repository.ErrRowNotFound) {
-			return domain.Column{}, ErrColumnNotFound
-		}
-		return domain.Column{}, fmt.Errorf("column service: update get column: %v: %w", err, ErrInternal)
-	}
-	if column.BoardID != boardID {
-		return domain.Column{}, ErrColumnNotFound
-	}
-
-	if name == nil && description == nil {
-		return column, nil
-	}
-
-	updated, err := s.columnRepo.Update(ctx, boardID, columnID, name, description)
+	updated, err := s.columnRepo.Update(ctx, callerID, boardID, columnID, name, description)
 	if err != nil {
 		if errors.Is(err, repository.ErrRowNotFound) {
 			return domain.Column{}, ErrColumnNotFound
@@ -123,18 +74,7 @@ func (s *column) Delete(
 	boardID domain.BoardID,
 	columnID domain.ColumnID,
 ) error {
-	board, err := s.boardRepo.Get(ctx, boardID)
-	if err != nil {
-		if errors.Is(err, repository.ErrRowNotFound) {
-			return ErrColumnNotFound
-		}
-		return fmt.Errorf("column service: delete get board: %v: %w", err, ErrInternal)
-	}
-	if board.OwnerID != callerID {
-		return ErrColumnNotFound
-	}
-
-	err = s.columnRepo.Delete(ctx, boardID, columnID)
+	err := s.columnRepo.Delete(ctx, callerID, boardID, columnID)
 	if err != nil {
 		if errors.Is(err, repository.ErrRowNotFound) {
 			return ErrColumnNotFound
@@ -152,29 +92,7 @@ func (s *column) Move(
 	columnID domain.ColumnID,
 	targetPosition domain.ColumnPosition,
 ) (domain.ColumnPosition, error) {
-	board, err := s.boardRepo.Get(ctx, boardID)
-	if err != nil {
-		if errors.Is(err, repository.ErrRowNotFound) {
-			return domain.ColumnPosition{}, ErrColumnNotFound
-		}
-		return domain.ColumnPosition{}, fmt.Errorf("column service: move get board: %v: %w", err, ErrInternal)
-	}
-	if board.OwnerID != callerID {
-		return domain.ColumnPosition{}, ErrColumnNotFound
-	}
-
-	column, err := s.columnRepo.Get(ctx, columnID)
-	if err != nil {
-		if errors.Is(err, repository.ErrRowNotFound) {
-			return domain.ColumnPosition{}, ErrColumnNotFound
-		}
-		return domain.ColumnPosition{}, fmt.Errorf("column service: move get column: %v: %w", err, ErrInternal)
-	}
-	if column.BoardID != boardID {
-		return domain.ColumnPosition{}, ErrColumnNotFound
-	}
-
-	position, err := s.columnRepo.Move(ctx, boardID, columnID, targetPosition)
+	position, err := s.columnRepo.Move(ctx, callerID, boardID, columnID, targetPosition)
 	if err != nil {
 		if errors.Is(err, repository.ErrRowNotFound) {
 			return domain.ColumnPosition{}, ErrColumnNotFound

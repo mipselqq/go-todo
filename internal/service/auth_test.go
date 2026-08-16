@@ -60,7 +60,7 @@ func TestAuth_Register(t *testing.T) {
 			wantErr: service.ErrInternal,
 			setupUserRepo: func(r *MockUserRepository) {
 				r.CreateFunc = func(ctx context.Context, email domain.Email, hash domain.PasswordHash) error {
-					return errors.New("Super unknown error happened")
+					return testutil.ErrUnexpected
 				}
 			},
 		},
@@ -128,7 +128,7 @@ func TestAuth_Login(t *testing.T) {
 			wantErr: service.ErrInternal,
 			setupUserRepo: func(r *MockUserRepository) {
 				r.GetByEmailFunc = func(ctx context.Context, email domain.Email) (domain.User, error) {
-					return domain.User{}, errors.New("Super unknown error happened")
+					return domain.User{}, testutil.ErrUnexpected
 				}
 			},
 		},

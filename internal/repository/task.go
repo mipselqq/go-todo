@@ -25,17 +25,18 @@ func NewPGTask(pgPool *pgxpool.Pool) *PGTask {
 func LockTaskColumns(
 	ctx context.Context,
 	tx pgx.Tx,
-	boardID domain.BoardID, // To ensure columns are locked in the same board.
+	callerID domain.UserID,
+	boardID domain.BoardID,
 	columnIDs ...domain.ColumnID,
-) error {
+) (map[domain.ColumnID]struct{}, error) {
 	if len(columnIDs) == 0 {
-		return errors.New("BUG: LockTaskColumns called with no columns. Isn't column ID forgotten?")
+		return nil, errors.New("BUG: LockTaskColumns called with no columns. Isn't column ID forgotten?")
 	}
 
 	seen := make(map[domain.ColumnID]struct{}, len(columnIDs))
 	for _, columnID := range columnIDs {
 		if _, ok := seen[columnID]; ok {
-			return errors.New("BUG: LockTaskColumns called so it locks the same column multiple times")
+			return nil, errors.New("BUG: LockTaskColumns called so it locks the same column multiple times")
 		}
 		seen[columnID] = struct{}{}
 	}
@@ -45,76 +46,109 @@ func LockTaskColumns(
 	// PostgreSQL will detect a deadlock and abort one transaction. Ordering makes all
 	// callers acquire row locks in the same order.
 	const lockColumnsQuery = `
-		SELECT id
-		FROM columns
-		WHERE board_id = @board_id
-		  AND id = ANY(@column_ids)
-		ORDER BY id
-		FOR UPDATE`
+		SELECT c.id
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		  AND c.id = ANY(@column_ids)
+		ORDER BY c.id
+		FOR UPDATE OF c`
 
 	rows, err := tx.Query(ctx, lockColumnsQuery, pgx.NamedArgs{
+		"caller_id":  callerID,
 		"board_id":   boardID,
 		"column_ids": columnIDs,
 	})
 	if err != nil {
-		return fmt.Errorf("lock task columns: %w", err)
+		return nil, fmt.Errorf("lock task columns: %w", err)
 	}
 	defer rows.Close()
 
-	locked := 0
+	locked := make(map[domain.ColumnID]struct{}, len(columnIDs))
 	for rows.Next() {
 		var rawColumnID uuid.UUID
 		if err = rows.Scan(&rawColumnID); err != nil {
-			return fmt.Errorf("failed to scan locked column row: %w", err)
+			return nil, fmt.Errorf("failed to scan locked column row: %w", err)
 		}
-		locked++
+		columnID, conversionErr := domain.NewColumnIDFromUUID(rawColumnID)
+		if conversionErr != nil {
+			return nil, fmt.Errorf("convert locked column id: %w", conversionErr)
+		}
+		locked[columnID] = struct{}{}
 	}
 
 	err = rows.Err()
 	if err != nil {
-		return fmt.Errorf("lock task columns rows final error: %w", err)
+		return nil, fmt.Errorf("lock task columns rows final error: %w", err)
 	}
-	if locked != len(columnIDs) {
-		return ErrRowNotFound
+	if len(locked) != len(columnIDs) {
+		return locked, ErrRowNotFound
 	}
 
-	return nil
+	return locked, nil
 }
 
 func (r *PGTask) Create(
 	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
 	columnID domain.ColumnID,
 	name domain.TaskName,
 	description domain.TaskDescription,
 ) (domain.Task, error) {
 	const (
+		beginQuery      = `BEGIN`
 		lockColumnQuery = `
 		SELECT 1
-		FROM columns
-		WHERE id = @column_id
-		FOR UPDATE`
-		nextPositionQuery = `
-		SELECT COALESCE(MAX(position), 0) + 1
-		FROM tasks
-		WHERE column_id = @column_id`
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		  AND c.id = @column_id
+		FOR UPDATE OF c`
 		insertTaskQuery = `
 		INSERT INTO tasks (column_id, name, description, position)
-		VALUES (@column_id, @name, @description, @position)
+		SELECT
+			c.id,
+			@name,
+			@description,
+			COALESCE(MAX(t.position), 0) + 1
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		LEFT JOIN tasks t ON t.column_id = c.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		  AND c.id = @column_id
+		GROUP BY c.id
 		RETURNING id, column_id, name, description, position, created_at, updated_at`
+		commitQuery = `COMMIT`
 	)
 
-	tx, err := r.pgPool.Begin(ctx)
+	args := pgx.NamedArgs{
+		"caller_id":   callerID,
+		"board_id":    boardID,
+		"column_id":   columnID,
+		"name":        name,
+		"description": description,
+	}
+	batch := &pgx.Batch{}
+	batch.Queue(beginQuery)
+	batch.Queue(lockColumnQuery, args)
+	batch.Queue(insertTaskQuery, args)
+	batch.Queue(commitQuery)
+
+	results := r.pgPool.SendBatch(ctx, batch)
+	defer func() {
+		_ = results.Close()
+	}()
+
+	_, err := results.Exec()
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("task repo: create begin tx: %v: %w", err, ErrInternal)
 	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
 	var locked int
-	err = tx.QueryRow(ctx, lockColumnQuery, pgx.NamedArgs{
-		"column_id": columnID,
-	}).Scan(&locked)
+	err = results.QueryRow().Scan(&locked)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Task{}, ErrRowNotFound
@@ -122,71 +156,73 @@ func (r *PGTask) Create(
 		return domain.Task{}, fmt.Errorf("task repo: create lock column: %v: %w", err, ErrInternal)
 	}
 
-	var nextPosition int64
-	err = tx.QueryRow(ctx, nextPositionQuery, pgx.NamedArgs{
-		"column_id": columnID,
-	}).Scan(&nextPosition)
+	task, err := ScanTask(results.QueryRow())
 	if err != nil {
-		return domain.Task{}, fmt.Errorf("task repo: create next position: %v: %w", err, ErrInternal)
-	}
-
-	task, err := ScanTask(tx.QueryRow(ctx, insertTaskQuery, pgx.NamedArgs{
-		"column_id":   columnID,
-		"name":        name,
-		"description": description,
-		"position":    nextPosition,
-	}))
-	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Task{}, ErrRowNotFound
+		}
 		return domain.Task{}, fmt.Errorf("task repo: create insert: %v: %w", err, ErrInternal)
 	}
-
-	err = tx.Commit(ctx)
+	_, err = results.Exec()
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("task repo: create commit: %v: %w", err, ErrInternal)
+	}
+	if err = results.Close(); err != nil {
+		return domain.Task{}, fmt.Errorf("task repo: create close batch: %v: %w", err, ErrInternal)
 	}
 
 	return task, nil
 }
 
-func (r *PGTask) ListByBoardID(ctx context.Context, boardID domain.BoardID) ([]domain.Task, error) {
-	const query = `
-	SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
-	FROM tasks t JOIN columns c ON t.column_id = c.id
-	WHERE c.board_id = $1
-	ORDER BY c.position ASC, t.position ASC
-	`
+func (r *PGTask) ListByColumnID(
+	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
+	columnID domain.ColumnID,
+) ([]domain.Task, error) {
+	const (
+		columnQuery = `
+		SELECT 1
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		  AND c.id = @column_id`
+		tasksQuery = `
+		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		JOIN tasks t ON t.column_id = c.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		  AND c.id = @column_id
+		ORDER BY t.position ASC`
+	)
 
-	rows, err := r.pgPool.Query(ctx, query, boardID)
-	if err != nil {
-		return nil, fmt.Errorf("task repo: list by board id: %v: %w", err, ErrInternal)
+	args := pgx.NamedArgs{
+		"caller_id": callerID,
+		"board_id":  boardID,
+		"column_id": columnID,
 	}
-	defer rows.Close()
+	batch := &pgx.Batch{}
+	batch.Queue(columnQuery, args)
+	batch.Queue(tasksQuery, args)
 
-	var result []domain.Task
-	for rows.Next() {
-		task, scanErr := ScanTask(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("task repo: list by board id: scan: %v: %w", scanErr, ErrInternal)
+	results := r.pgPool.SendBatch(ctx, batch)
+	defer func() {
+		_ = results.Close()
+	}()
+
+	var found int
+	err := results.QueryRow().Scan(&found)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRowNotFound
 		}
-		result = append(result, task)
+		return nil, fmt.Errorf("task repo: list by column id check column: %v: %w", err, ErrInternal)
 	}
 
-	err = rows.Err()
-	if err != nil {
-		return nil, fmt.Errorf("task repo: list by board id: rows final error: %v: %w", err, ErrInternal)
-	}
-
-	return result, nil
-}
-
-func (r *PGTask) ListByColumnID(ctx context.Context, columnID domain.ColumnID) ([]domain.Task, error) {
-	const query = `
-		SELECT id, column_id, name, description, position, created_at, updated_at
-		FROM tasks
-		WHERE column_id = $1
-		ORDER BY position ASC`
-
-	rows, err := r.pgPool.Query(ctx, query, columnID)
+	rows, err := results.Query()
 	if err != nil {
 		return nil, fmt.Errorf("task repo: list by column id: %v: %w", err, ErrInternal)
 	}
@@ -205,17 +241,31 @@ func (r *PGTask) ListByColumnID(ctx context.Context, columnID domain.ColumnID) (
 	if err != nil {
 		return nil, fmt.Errorf("task repo: list by column id: rows final error: %v: %w", err, ErrInternal)
 	}
+	if err = results.Close(); err != nil {
+		return nil, fmt.Errorf("task repo: list by column id close batch: %v: %w", err, ErrInternal)
+	}
 
 	return result, nil
 }
 
-func (r *PGTask) Get(ctx context.Context, taskID domain.TaskID) (domain.Task, error) {
+func (r *PGTask) Get(
+	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
+	columnID domain.ColumnID,
+	taskID domain.TaskID,
+) (domain.Task, error) {
 	const query = `
-		SELECT id, column_id, name, description, position, created_at, updated_at
-		FROM tasks
-		WHERE id = $1`
+		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		JOIN tasks t ON t.column_id = c.id
+		WHERE b.id = $1
+		  AND b.owner_id = $2
+		  AND c.id = $3
+		  AND t.id = $4`
 
-	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, taskID))
+	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, boardID, callerID, columnID, taskID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Task{}, ErrRowNotFound
@@ -228,22 +278,34 @@ func (r *PGTask) Get(ctx context.Context, taskID domain.TaskID) (domain.Task, er
 
 func (r *PGTask) Update(
 	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
 	columnID domain.ColumnID,
 	taskID domain.TaskID,
 	name *domain.TaskName,
 	description *domain.TaskDescription,
 ) (domain.Task, error) {
 	const query = `
-		UPDATE tasks
+		UPDATE tasks t
 		SET
-			name = COALESCE($3, name),
-			description = COALESCE($4, description),
-			updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-		WHERE column_id = $1
-		  AND id = $2
-		RETURNING id, column_id, name, description, position, created_at, updated_at`
+			name = COALESCE($5, t.name),
+			description = COALESCE($6, t.description),
+			updated_at = CASE
+				WHEN $5 IS NULL
+				 AND $6 IS NULL
+				THEN t.updated_at
+				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+			END
+		FROM columns c
+		JOIN boards b ON b.id = c.board_id
+		WHERE b.id = $2
+		  AND b.owner_id = $1
+		  AND c.id = $3
+		  AND t.column_id = c.id
+		  AND t.id = $4
+		RETURNING t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at`
 
-	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, columnID, taskID, name, description))
+	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, callerID, boardID, columnID, taskID, name, description))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Task{}, ErrRowNotFound
@@ -256,6 +318,7 @@ func (r *PGTask) Update(
 
 func (r *PGTask) Move(
 	ctx context.Context,
+	callerID domain.UserID,
 	boardID domain.BoardID,
 	currentColumnID domain.ColumnID,
 	taskID domain.TaskID,
@@ -340,9 +403,15 @@ func (r *PGTask) Move(
 
 	// 1. Lock affected columns so concurrent operations can't interrupt the move.
 	if sameColumn {
-		err = LockTaskColumns(ctx, tx, boardID, currentColumnID)
+		_, err = LockTaskColumns(ctx, tx, callerID, boardID, currentColumnID)
 	} else {
-		err = LockTaskColumns(ctx, tx, boardID, currentColumnID, targetColumnID)
+		var locked map[domain.ColumnID]struct{}
+		locked, err = LockTaskColumns(ctx, tx, callerID, boardID, currentColumnID, targetColumnID)
+		if errors.Is(err, ErrRowNotFound) {
+			if _, currentFound := locked[currentColumnID]; currentFound {
+				return domain.ColumnID{}, domain.TaskPosition{}, ErrTargetRowNotFound
+			}
+		}
 	}
 	if err != nil {
 		if errors.Is(err, ErrRowNotFound) {
@@ -455,6 +524,7 @@ func (r *PGTask) Move(
 
 func (r *PGTask) Delete(
 	ctx context.Context,
+	callerID domain.UserID,
 	boardID domain.BoardID,
 	columnID domain.ColumnID,
 	taskID domain.TaskID,
@@ -488,7 +558,7 @@ func (r *PGTask) Delete(
 	}()
 
 	// 1. Lock affected columns so concurrent operations can't interrupt the delete.
-	err = LockTaskColumns(ctx, tx, boardID, columnID)
+	_, err = LockTaskColumns(ctx, tx, callerID, boardID, columnID)
 	if err != nil {
 		if errors.Is(err, ErrRowNotFound) {
 			return ErrRowNotFound

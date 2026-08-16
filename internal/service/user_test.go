@@ -72,7 +72,7 @@ func TestUser_CreateTelegramLinkToken(t *testing.T) {
 			},
 			setupTokenRepo: func(r *MockTelegramTokenRepository) {
 				r.InsertLinkTokenFunc = func(ctx context.Context, token domain.TelegramLinkToken, uID domain.UserID) error {
-					return errors.New("db exploded")
+					return testutil.ErrUnexpected
 				}
 			},
 			wantErr: service.ErrInternal,
@@ -161,6 +161,16 @@ func TestUser_LinkTelegramByToken(t *testing.T) {
 			wantErr:       service.ErrInternal,
 		},
 		{
+			name: "Consume unexpected error",
+			setupTokenRepo: func(r *MockTelegramTokenRepository) {
+				r.ConsumeTelegramLinkTokenFunc = func(ctx context.Context, token domain.TelegramLinkToken) (domain.UserID, error) {
+					return domain.UserID{}, testutil.ErrUnexpected
+				}
+			},
+			setupUserRepo: func(r *MockUserRepository) {},
+			wantErr:       service.ErrInternal,
+		},
+		{
 			name: "User not found",
 			setupTokenRepo: func(r *MockTelegramTokenRepository) {
 				r.ConsumeTelegramLinkTokenFunc = func(ctx context.Context, token domain.TelegramLinkToken) (domain.UserID, error) {
@@ -184,6 +194,20 @@ func TestUser_LinkTelegramByToken(t *testing.T) {
 			setupUserRepo: func(r *MockUserRepository) {
 				r.UpdateTelegramInfoFunc = func(ctx context.Context, userID domain.UserID, chatID domain.TelegramChatID, username domain.TelegramUsername) error {
 					return repository.ErrInternal
+				}
+			},
+			wantErr: service.ErrInternal,
+		},
+		{
+			name: "Update unexpected error",
+			setupTokenRepo: func(r *MockTelegramTokenRepository) {
+				r.ConsumeTelegramLinkTokenFunc = func(ctx context.Context, token domain.TelegramLinkToken) (domain.UserID, error) {
+					return wantUserID, nil
+				}
+			},
+			setupUserRepo: func(r *MockUserRepository) {
+				r.UpdateTelegramInfoFunc = func(ctx context.Context, userID domain.UserID, chatID domain.TelegramChatID, username domain.TelegramUsername) error {
+					return testutil.ErrUnexpected
 				}
 			},
 			wantErr: service.ErrInternal,

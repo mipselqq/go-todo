@@ -39,14 +39,14 @@ func TestTelegramTokenRepository_InsertLinkToken_AlreadyExists(t *testing.T) {
 	ctx := context.Background()
 	token := testutil.ValidTelegramLinkToken()
 	userID := domain.NewUserID()
-	anotherUserID := domain.NewUserID()
+	unrelatedUserID := domain.NewUserID()
 
 	err := repo.InsertLinkToken(ctx, token, userID)
 	if err != nil {
 		t.Fatalf("InsertLinkToken() first insert error = %v, want nil", err)
 	}
 
-	err = repo.InsertLinkToken(ctx, token, anotherUserID)
+	err = repo.InsertLinkToken(ctx, token, unrelatedUserID)
 	if !errors.Is(err, repository.ErrKeyExists) {
 		t.Fatalf("InsertLinkToken() second insert error = %v, want ErrTelegramLinkTokenAlreadyExists", err)
 	}

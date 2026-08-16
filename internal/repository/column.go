@@ -21,40 +21,67 @@ func NewPGColumn(pgPool *pgxpool.Pool) *PGColumn {
 	return &PGColumn{pgPool: pgPool}
 }
 
+const listColumnsByBoardIDQuery = `
+	SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
+	FROM boards b
+	JOIN columns c ON c.board_id = b.id
+	WHERE b.id = @board_id
+	  AND b.owner_id = @caller_id
+	ORDER BY c.position ASC`
+
 func (r *PGColumn) Create(
 	ctx context.Context,
+	callerID domain.UserID,
 	boardID domain.BoardID,
 	name domain.ColumnName,
 	description domain.ColumnDescription,
 ) (domain.Column, error) {
 	const (
+		beginQuery     = `BEGIN`
 		lockBoardQuery = `
 		SELECT 1
 		FROM boards
 		WHERE id = @board_id
+		  AND owner_id = @caller_id
 		FOR UPDATE`
-		nextPositionQuery = `
-		SELECT COALESCE(MAX(position), 0) + 1
-		FROM columns
-		WHERE board_id = @board_id`
 		insertColumnQuery = `
 		INSERT INTO columns (board_id, name, description, position)
-		VALUES (@board_id, @name, @description, @position)
+		SELECT
+		    b.id,
+		    @name,
+		    @description,
+		    COALESCE(MAX(c.position), 0) + 1
+		FROM boards b
+		LEFT JOIN columns c ON c.board_id = b.id
+		WHERE b.id = @board_id
+		  AND b.owner_id = @caller_id
+		GROUP BY b.id
 		RETURNING id, board_id, name, description, position, created_at, updated_at`
+		commitQuery = `COMMIT`
 	)
 
-	tx, err := r.pgPool.Begin(ctx)
+	args := pgx.NamedArgs{
+		"caller_id":   callerID,
+		"board_id":    boardID,
+		"name":        name,
+		"description": description,
+	}
+	batch := &pgx.Batch{}
+	batch.Queue(beginQuery)
+	batch.Queue(lockBoardQuery, args)
+	batch.Queue(insertColumnQuery, args)
+	batch.Queue(commitQuery)
+
+	results := r.pgPool.SendBatch(ctx, batch)
+	defer func() {
+		_ = results.Close()
+	}()
+
+	_, err := results.Exec()
 	if err != nil {
 		return domain.Column{}, fmt.Errorf("column repo: create begin tx: %v: %w", err, ErrInternal)
 	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
-
-	var locked int
-	err = tx.QueryRow(ctx, lockBoardQuery, pgx.NamedArgs{
-		"board_id": boardID.UUID(),
-	}).Scan(&locked)
+	_, err = results.Exec()
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Column{}, ErrRowNotFound
@@ -62,40 +89,58 @@ func (r *PGColumn) Create(
 		return domain.Column{}, fmt.Errorf("column repo: create lock board: %v: %w", err, ErrInternal)
 	}
 
-	var nextPosition int64
-	err = tx.QueryRow(ctx, nextPositionQuery, pgx.NamedArgs{
-		"board_id": boardID.UUID(),
-	}).Scan(&nextPosition)
+	column, err := ScanColumn(results.QueryRow())
 	if err != nil {
-		return domain.Column{}, fmt.Errorf("column repo: create next position: %v: %w", err, ErrInternal)
-	}
-
-	column, err := ScanColumn(tx.QueryRow(ctx, insertColumnQuery, pgx.NamedArgs{
-		"board_id":    boardID,
-		"name":        name,
-		"description": description,
-		"position":    nextPosition,
-	}))
-	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Column{}, ErrRowNotFound
+		}
 		return domain.Column{}, fmt.Errorf("column repo: create insert: %v: %w", err, ErrInternal)
 	}
-
-	err = tx.Commit(ctx)
+	_, err = results.Exec()
 	if err != nil {
 		return domain.Column{}, fmt.Errorf("column repo: create commit: %v: %w", err, ErrInternal)
+	}
+	if err = results.Close(); err != nil {
+		return domain.Column{}, fmt.Errorf("column repo: create close batch: %v: %w", err, ErrInternal)
 	}
 
 	return column, nil
 }
 
-func (r *PGColumn) ListByBoardID(ctx context.Context, boardID domain.BoardID) ([]domain.Column, error) {
-	const query = `
-		SELECT id, board_id, name, description, position, created_at, updated_at
-		FROM columns
-		WHERE board_id = $1
-		ORDER BY position ASC`
+func (r *PGColumn) ListByBoardID(
+	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
+) ([]domain.Column, error) {
+	const boardQuery = `
+		SELECT 1
+		FROM boards
+		WHERE id = @board_id
+		  AND owner_id = @caller_id`
 
-	rows, err := r.pgPool.Query(ctx, query, boardID)
+	args := pgx.NamedArgs{
+		"caller_id": callerID,
+		"board_id":  boardID,
+	}
+	batch := &pgx.Batch{}
+	batch.Queue(boardQuery, args)
+	batch.Queue(listColumnsByBoardIDQuery, args)
+
+	results := r.pgPool.SendBatch(ctx, batch)
+	defer func() {
+		_ = results.Close()
+	}()
+
+	var found int
+	err := results.QueryRow().Scan(&found)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRowNotFound
+		}
+		return nil, fmt.Errorf("column repo: list by board id check board: %v: %w", err, ErrInternal)
+	}
+
+	rows, err := results.Query()
 	if err != nil {
 		return nil, fmt.Errorf("column repo: list by board id: %v: %w", err, ErrInternal)
 	}
@@ -114,17 +159,28 @@ func (r *PGColumn) ListByBoardID(ctx context.Context, boardID domain.BoardID) ([
 	if err != nil {
 		return nil, fmt.Errorf("column repo: list by board id: rows final error: %v: %w", err, ErrInternal)
 	}
+	if err = results.Close(); err != nil {
+		return nil, fmt.Errorf("column repo: list by board id close batch: %v: %w", err, ErrInternal)
+	}
 
 	return result, nil
 }
 
-func (r *PGColumn) Get(ctx context.Context, columnID domain.ColumnID) (domain.Column, error) {
+func (r *PGColumn) Get(
+	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
+	columnID domain.ColumnID,
+) (domain.Column, error) {
 	const query = `
-		SELECT id, board_id, name, description, position, created_at, updated_at
-		FROM columns
-		WHERE id = $1`
+		SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
+		FROM boards b
+		JOIN columns c ON c.board_id = b.id
+		WHERE b.id = $1
+		  AND b.owner_id = $2
+		  AND c.id = $3`
 
-	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, columnID))
+	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, boardID, callerID, columnID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Column{}, ErrRowNotFound
@@ -137,22 +193,31 @@ func (r *PGColumn) Get(ctx context.Context, columnID domain.ColumnID) (domain.Co
 
 func (r *PGColumn) Update(
 	ctx context.Context,
+	callerID domain.UserID,
 	boardID domain.BoardID,
 	columnID domain.ColumnID,
 	name *domain.ColumnName,
 	description *domain.ColumnDescription,
 ) (domain.Column, error) {
 	const query = `
-		UPDATE columns
+		UPDATE columns c
 		SET
-			name = COALESCE($1, name),
-			description = COALESCE($2, description),
-			updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-		WHERE board_id = $3
-		  AND id = $4
-		RETURNING id, board_id, name, description, position, created_at, updated_at`
+			name = COALESCE($1, c.name),
+			description = COALESCE($2, c.description),
+			updated_at = CASE
+				WHEN $1 IS NULL
+				 AND $2 IS NULL
+				THEN c.updated_at
+				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+			END
+		FROM boards b
+		WHERE c.board_id = $3
+		  AND c.id = $4
+		  AND b.id = c.board_id
+		  AND b.owner_id = $5
+		RETURNING c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at`
 
-	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID))
+	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID, callerID))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Column{}, ErrRowNotFound
@@ -165,6 +230,7 @@ func (r *PGColumn) Update(
 
 func (r *PGColumn) Move(
 	ctx context.Context,
+	callerID domain.UserID,
 	boardID domain.BoardID,
 	columnID domain.ColumnID,
 	targetPosition domain.ColumnPosition,
@@ -177,6 +243,7 @@ func (r *PGColumn) Move(
 		SELECT 1
 		FROM boards
 		WHERE id = @board_id
+		  AND owner_id = @caller_id
 		FOR UPDATE`
 
 		// 2. Defer the unique constraint until COMMIT for this transaction only.
@@ -232,7 +299,8 @@ func (r *PGColumn) Move(
 
 	var locked int
 	err = tx.QueryRow(ctx, lockBoardQuery, pgx.NamedArgs{
-		"board_id": boardID.UUID(),
+		"caller_id": callerID,
+		"board_id":  boardID,
 	}).Scan(&locked)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -308,13 +376,19 @@ func (r *PGColumn) Move(
 	return targetPosition, nil
 }
 
-func (r *PGColumn) Delete(ctx context.Context, boardID domain.BoardID, columnID domain.ColumnID) error {
+func (r *PGColumn) Delete(
+	ctx context.Context,
+	callerID domain.UserID,
+	boardID domain.BoardID,
+	columnID domain.ColumnID,
+) error {
 	const (
 		// 1. Lock the board row so no concurrent operation can reorder columns in the same board.
 		lockBoardQuery = `
 		SELECT 1
 		FROM boards
 		WHERE id = @board_id
+		  AND owner_id = @caller_id
 		FOR UPDATE`
 
 		// 2. Defer the unique constraint until COMMIT for this transaction only.
@@ -346,7 +420,8 @@ func (r *PGColumn) Delete(ctx context.Context, boardID domain.BoardID, columnID 
 
 	var locked int
 	err = tx.QueryRow(ctx, lockBoardQuery, pgx.NamedArgs{
-		"board_id": boardID.UUID(),
+		"caller_id": callerID,
+		"board_id":  boardID,
 	}).Scan(&locked)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

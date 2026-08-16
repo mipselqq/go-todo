@@ -13,21 +13,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func CreateFixedUser(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-
-	id := testutil.ValidUserID()
-	domainEmail := testutil.ValidEmail()
-	CreateUser(t, pool, id, domainEmail, testutil.ValidPasswordHash())
-}
-
 func CreateUser(t *testing.T, pool *pgxpool.Pool, id domain.UserID, email domain.Email, hash domain.PasswordHash) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const query = `INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)`
+	const query = `
+		INSERT INTO users (id, email, password_hash)
+		VALUES ($1, $2, $3)`
 	_, err := pool.Exec(ctx, query, id, email, hash.RevealSecret())
 	if err != nil {
 		t.Fatalf("CreateUser() error = %v", err)
@@ -41,8 +35,8 @@ func CreateBoard(t *testing.T, pool *pgxpool.Pool, board *domain.Board) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO boards (id, owner_id, name, description, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6)`
+		INSERT INTO boards (id, owner_id, name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
 	_, err := pool.Exec(
 		ctx, query,
 		board.ID,
@@ -64,9 +58,9 @@ func ListBoards(t *testing.T, pool *pgxpool.Pool) []domain.Board {
 	defer cancel()
 
 	const query = `
-			SELECT id, owner_id, name, description, created_at, updated_at
-			FROM boards
-			ORDER BY created_at ASC`
+		SELECT id, owner_id, name, description, created_at, updated_at
+		FROM boards
+		ORDER BY created_at ASC`
 
 	rows, err := pool.Query(ctx, query)
 	if err != nil {
@@ -98,8 +92,8 @@ func CreateColumn(t *testing.T, pool *pgxpool.Pool, column *domain.Column) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO columns (id, board_id, name, description, position, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO columns (id, board_id, name, description, position, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := pool.Exec(
 		ctx, query,
 		column.ID,
@@ -122,10 +116,10 @@ func ListColumnsByBoardID(t *testing.T, pool *pgxpool.Pool, boardID domain.Board
 	defer cancel()
 
 	const query = `
-			SELECT id, board_id, name, description, position, created_at, updated_at
-			FROM columns
-			WHERE board_id = $1
-			ORDER BY position ASC`
+		SELECT id, board_id, name, description, position, created_at, updated_at
+		FROM columns
+		WHERE board_id = $1
+		ORDER BY position ASC`
 
 	rows, err := pool.Query(ctx, query, boardID)
 	if err != nil {
@@ -158,8 +152,8 @@ func CreateTask(t *testing.T, pool *pgxpool.Pool, task *domain.Task) {
 	defer cancel()
 
 	const query = `
-			INSERT INTO tasks (id, column_id, name, description, position, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO tasks (id, column_id, name, description, position, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := pool.Exec(
 		ctx, query,
 		task.ID,
@@ -175,6 +169,74 @@ func CreateTask(t *testing.T, pool *pgxpool.Pool, task *domain.Task) {
 	}
 }
 
+type boardHierarchyFixture struct {
+	board             domain.Board
+	column            domain.Column
+	task              domain.Task
+	siblingColumn     domain.Column
+	parallelTask      domain.Task
+	unrelatedBoard    domain.Board
+	unrelatedColumn   domain.Column
+	unrelatedTask     domain.Task
+	nonexistentBoard  domain.Board
+	nonexistentColumn domain.Column
+	nonexistentTask   domain.Task
+}
+
+// setupDefaultBoardHierarchy creates this fixture:
+//
+// board
+// ├── column -> task
+// └── siblingColumn -> parallelTask
+// unrelatedBoard
+// └── unrelatedColumn -> unrelatedTask
+// nonexistentBoard
+// └── nonexistentColumn -> nonexistentTask
+//
+// All entities except 'nonexistent' are inserted into the database.
+func setupDefaultBoardHierarchy(t *testing.T, pool *pgxpool.Pool) boardHierarchyFixture {
+	t.Helper()
+
+	board := testutil.ValidBoard()
+	column := testutil.ValidColumn(board.ID)
+	task := testutil.ValidTask(column.ID)
+	siblingColumn := testutil.NewValidColumn(t, board.ID, "Sibling", 2)
+	parallelTask := testutil.ValidTask(siblingColumn.ID)
+
+	unrelatedBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	unrelatedColumn := testutil.ValidColumn(unrelatedBoard.ID)
+	unrelatedTask := testutil.ValidTask(unrelatedColumn.ID)
+
+	CreateUser(t, pool, board.OwnerID, testutil.ValidEmail(), testutil.ValidPasswordHash())
+	CreateUser(t, pool, unrelatedBoard.OwnerID, testutil.AnotherValidEmail(), testutil.ValidPasswordHash())
+	CreateBoard(t, pool, &board)
+	CreateColumn(t, pool, &column)
+	CreateTask(t, pool, &task)
+	CreateColumn(t, pool, &siblingColumn)
+	CreateTask(t, pool, &parallelTask)
+	CreateBoard(t, pool, &unrelatedBoard)
+	CreateColumn(t, pool, &unrelatedColumn)
+	CreateTask(t, pool, &unrelatedTask)
+
+	nonexistentBoard := testutil.ValidBoardForOwner(domain.NewUserID())
+	nonexistentColumn := testutil.ValidColumn(nonexistentBoard.ID)
+	nonexistentTask := testutil.ValidTask(nonexistentColumn.ID)
+
+	return boardHierarchyFixture{
+		board:             board,
+		column:            column,
+		task:              task,
+		siblingColumn:     siblingColumn,
+		parallelTask:      parallelTask,
+		unrelatedBoard:    unrelatedBoard,
+		unrelatedColumn:   unrelatedColumn,
+		unrelatedTask:     unrelatedTask,
+		nonexistentBoard:  nonexistentBoard,
+		nonexistentColumn: nonexistentColumn,
+		nonexistentTask:   nonexistentTask,
+	}
+}
+
 func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.ColumnID) []domain.Task {
 	t.Helper()
 
@@ -182,10 +244,10 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	defer cancel()
 
 	const query = `
-			SELECT id, column_id, name, description, position, created_at, updated_at
-			FROM tasks
-			WHERE column_id = $1
-			ORDER BY position ASC`
+		SELECT id, column_id, name, description, position, created_at, updated_at
+		FROM tasks
+		WHERE column_id = $1
+		ORDER BY position ASC`
 
 	rows, err := pool.Query(ctx, query, columnID)
 	if err != nil {
@@ -211,26 +273,6 @@ func ListTasksByColumnID(t *testing.T, pool *pgxpool.Pool, columnID domain.Colum
 	return tasks
 }
 
-func insertFixedUserAndBoard(t *testing.T, pool *pgxpool.Pool) domain.Board {
-	t.Helper()
-
-	CreateFixedUser(t, pool)
-	board := testutil.ValidBoard()
-	CreateBoard(t, pool, &board)
-
-	return board
-}
-
-func insertFixedUserBoardAndColumn(t *testing.T, pool *pgxpool.Pool) (domain.Board, domain.Column) {
-	t.Helper()
-
-	board := insertFixedUserAndBoard(t, pool)
-	column := testutil.ValidColumn(board.ID)
-	CreateColumn(t, pool, &column)
-
-	return board, column
-}
-
 func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tableName string, columnNames ...string) {
 	t.Helper()
 
@@ -238,11 +280,11 @@ func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tab
 	defer cancel()
 
 	const query = `
-			SELECT datetime_precision
-			FROM information_schema.columns
-			WHERE table_schema = current_schema()
-			  AND table_name = $1
-			  AND column_name = $2`
+		SELECT datetime_precision
+		FROM information_schema.columns
+		WHERE table_schema = current_schema()
+		    AND table_name = $1
+		    AND column_name = $2`
 
 	for _, columnName := range columnNames {
 		var precision int32
@@ -262,7 +304,10 @@ func ListUsers(t *testing.T, pool *pgxpool.Pool) []domain.User {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	const query = `SELECT id, email, password_hash, telegram_chat_id, telegram_username FROM users ORDER BY id`
+	const query = `
+		SELECT id, email, password_hash, telegram_chat_id, telegram_username
+		FROM users
+		ORDER BY id`
 
 	rows, err := pool.Query(ctx, query)
 	if err != nil {
