@@ -888,7 +888,8 @@ func TestLockTaskColumns_BlocksSecondTransaction(t *testing.T) {
 	}
 
 	lockTaskColumns := func(tx pgx.Tx) error {
-		return repository.LockTaskColumns(context.Background(), tx, fixture.board.OwnerID, fixture.board.ID, fixture.column.ID)
+		_, err := repository.LockTaskColumns(context.Background(), tx, fixture.board.OwnerID, fixture.board.ID, fixture.column.ID)
+		return err
 	}
 
 	tx1 := beginTx("1")

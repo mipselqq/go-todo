@@ -26,17 +26,6 @@ func LockTaskColumns(
 	ctx context.Context,
 	tx pgx.Tx,
 	callerID domain.UserID,
-	boardID domain.BoardID, // To ensure columns are locked in the same board.
-	columnIDs ...domain.ColumnID,
-) error {
-	_, err := lockTaskColumns(ctx, tx, callerID, boardID, columnIDs...)
-	return err
-}
-
-func lockTaskColumns(
-	ctx context.Context,
-	tx pgx.Tx,
-	callerID domain.UserID,
 	boardID domain.BoardID,
 	columnIDs ...domain.ColumnID,
 ) (map[domain.ColumnID]struct{}, error) {
@@ -414,10 +403,10 @@ func (r *PGTask) Move(
 
 	// 1. Lock affected columns so concurrent operations can't interrupt the move.
 	if sameColumn {
-		err = LockTaskColumns(ctx, tx, callerID, boardID, currentColumnID)
+		_, err = LockTaskColumns(ctx, tx, callerID, boardID, currentColumnID)
 	} else {
 		var locked map[domain.ColumnID]struct{}
-		locked, err = lockTaskColumns(ctx, tx, callerID, boardID, currentColumnID, targetColumnID)
+		locked, err = LockTaskColumns(ctx, tx, callerID, boardID, currentColumnID, targetColumnID)
 		if errors.Is(err, ErrRowNotFound) {
 			if _, currentFound := locked[currentColumnID]; currentFound {
 				return domain.ColumnID{}, domain.TaskPosition{}, ErrTargetRowNotFound
@@ -569,7 +558,7 @@ func (r *PGTask) Delete(
 	}()
 
 	// 1. Lock affected columns so concurrent operations can't interrupt the delete.
-	err = LockTaskColumns(ctx, tx, callerID, boardID, columnID)
+	_, err = LockTaskColumns(ctx, tx, callerID, boardID, columnID)
 	if err != nil {
 		if errors.Is(err, ErrRowNotFound) {
 			return ErrRowNotFound
