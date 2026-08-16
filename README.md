@@ -212,13 +212,14 @@ Branch protection rules (GitHub):
 ## CD
 **Highly automated** pipeline below ensures a **secure**, **reproducible**, and **quick** way to get a hardened server with a running app in a few minutes:
 - Get VDS server, generate SSH keys, copy public key (manual)
-- Configure reverse proxy to handle HTTPS and high-level routing
+- Configure reverse proxy to handle HTTPS and high-level routing (manual)
 - Set up config in GitHub secrets (manual)
 - Install required packages
 - Configure unattended upgrades
 - Configure fail2ban
 - Configure log rotation
-- Start Docker service
+- Prune unused Docker images daily
+- Start Docker and Cron services
 - Disable root login and password authentication
 - Close all ports by default, except 443 and 80
 - Create user and app directory
