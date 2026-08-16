@@ -51,6 +51,7 @@
           - docker-ce-cli
           - containerd.io
           - docker-compose-plugin
+          - cron
         state: present
 
     - name: Configure unattended-upgrades (Daily Schedule)
@@ -97,6 +98,20 @@
           }
         mode: "0644"
       notify: Restart Docker
+
+    - name: Prune unused Docker images daily
+      cron:
+        name: Prune unused Docker images
+        user: root
+        minute: "0"
+        hour: "4"
+        job: '/usr/bin/docker image prune -af'
+
+    - name: Ensure cron is running
+      service:
+        name: cron
+        state: started
+        enabled: yes
 
     - name: Ensure Docker is running
       service:
