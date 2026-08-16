@@ -187,7 +187,7 @@ type boardHierarchyFixture struct {
 //
 // board
 // ├── column -> task
-// └── siblingColumn -> siblingTask
+// └── siblingColumn -> parallelTask
 // unrelatedBoard
 // └── unrelatedColumn -> unrelatedTask
 // nonexistentBoard
