@@ -22,7 +22,7 @@ services:
       - postgres_data_dev:/var/lib/postgresql
 
   redis:
-    image: redis:8.6.3-alpine@sha256:02c2454cd3b6277389101b9d42d009f8518255930f8b06ae33624e324f8c6455
+    image: redis:8.10.0-alpine@sha256:a6a88248ad5b0c724b7f2b380b7d21f46097db158b2b077ef85bcb97f90aee3a
     container_name: goro-redis-dev
     cpu_shares: 512
     oom_score_adj: -500
@@ -39,7 +39,7 @@ services:
       - redis_data_dev:/data
 
   prometheus:
-    image: prom/prometheus:v3.9.1@sha256:2024d7bdfc559f6254de22d65e62d799eaa8eb818fe5dbeca212d3f200b70890
+    image: prom/prometheus:v3.13.2@sha256:1147c92841726a6fef55fe6124491d6f85480f8de204f7d420304ca5bbd0a8f7
     container_name: goro-prometheus-dev
     cpu_shares: 512
     oom_score_adj: 100
@@ -80,7 +80,7 @@ services:
           --web.config.file=/etc/prometheus/web-config.yml
 
   grafana:
-    image: grafana/grafana:12.3.2@sha256:5c1eb28c96c2a8a103384183fb2c32f9cb499904b310b9ba8cdd6bdae435509a
+    image: grafana/grafana:12.4.8@sha256:cc3b7fb512d9ce210e0185394a05f46fd85417a84c7dfff92094c1148ba6fbfe
     container_name: goro-grafana-dev
     cpu_shares: 256
     oom_score_adj: 200
@@ -104,7 +104,7 @@ services:
       retries: 3
 
   node_exporter:
-    image: prom/node-exporter:v1.10.2@sha256:7bcf2839f207d926b908cd3c566c9f1577efb72268062be0c96cd3b17a5cb283
+    image: prom/node-exporter:v1.12.1@sha256:da83fae85603c4e47e6c68369a7d746e2dda683dc35ea2e234b4f171e0d92798
     container_name: goro-node-exporter-dev
     cpu_shares: 128
     oom_score_adj: 500
@@ -118,7 +118,7 @@ services:
       retries: 3
 
   loki:
-    image: grafana/loki:3.7.3@sha256:d14b3a2c419b72fe27cd094c017863bd37a5ea9ac7d72f35bcd25f5bd081dc47
+    image: grafana/loki:3.7.6@sha256:83c76da7858a8f4f88117ac521864ac33896fdae7a352a1df4068556e7513f64
     container_name: goro-loki-dev
     cpu_shares: 256
     oom_score_adj: 300
@@ -135,7 +135,7 @@ services:
       retries: 3
 
   alloy:
-    image: grafana/alloy:v1.6.1@sha256:da82cb8b6c5939fac71e2206b05101ca7581f929d6ea7c1e8dd311ccc69176fa
+    image: grafana/alloy:v1.18.1@sha256:754409730f1a4ed9781f8a2ea3b6a8c55750ee125a267ecf8fb449f9a25c109a
     container_name: goro-alloy-dev
     cpu_shares: 128
     oom_score_adj: 400
