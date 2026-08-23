@@ -30,25 +30,25 @@ var version = "no version bundled by linker"
 // @name Authorization
 // @description Enter JWT token with `Bearer ` prefix, e.g. `Bearer eyJhbGciOi...`
 func main() {
-	if os.Getenv("ENV") != "prod" {
+	if os.Getenv("APP_ENV") != "prod" {
 		_ = godotenv.Load(".env.dev")
 	}
 
-	bootLogger := logging.NewLogger("dev", "info")
-	appCfg := config.NewAppFromEnv(bootLogger)
-	telegramCfg, err := config.NewTelegramFromEnv(bootLogger)
-	if err != nil {
-		panic(err)
-	}
+	appCfg := config.NewAppFromEnv(slog.Default())
 	openapi.SwaggerInfo.Host = appCfg.SwaggerHost
 	logger := logging.NewLogger(appCfg.Env, appCfg.LogLevel, httpschema.AllExtractors()...)
 
 	logger.Info("Running", slog.String("version", version))
 	logger.Info("App config", slog.Any("config", appCfg))
 
-	pool, err := app.SetupPostgresFromEnv(logger, "migrations")
+	pool, err := app.SetupPostgresFromEnv(logger)
 	if err != nil {
 		logger.Error("failed to setup postgres", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+	err = app.MigratePostgres(pool, logger, "migrations")
+	if err != nil {
+		logger.Error("failed to migrate postgres", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
@@ -63,6 +63,11 @@ func main() {
 	defer func() {
 		_ = redisClient.Close()
 	}()
+
+	telegramCfg, err := config.NewTelegramFromEnv(logger)
+	if err != nil {
+		logger.Error("invalid telegram config", slog.String("err", err.Error()))
+	}
 
 	application := app.New(logger, pool, redisClient, &appCfg, &telegramCfg, prometheus.DefaultRegisterer)
 

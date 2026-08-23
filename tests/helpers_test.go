@@ -37,13 +37,13 @@ func prelude(t *testing.T) preludeResult {
 
 	pool := testutil.SetupPostgres(t, "../migrations")
 
-	if os.Getenv("ENV") != "prod" {
+	if os.Getenv("APP_ENV") != "prod" {
 		err := godotenv.Load("../.env.dev")
 		if err != nil {
 			t.Fatalf("godotenv.Load() error = %v", err)
 		}
 	} else {
-		t.Fatalf("ENV = %q, want non-prod", os.Getenv("ENV"))
+		t.Fatalf("APP_ENV = %q, want non-prod", os.Getenv("APP_ENV"))
 	}
 
 	logger := testutil.NewLogger(t)

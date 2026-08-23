@@ -17,7 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func SetupPostgresFromEnv(logger *slog.Logger, migrationsDir string) (*pgxpool.Pool, error) {
+func SetupPostgresFromEnv(logger *slog.Logger) (*pgxpool.Pool, error) {
 	logger = logging.WithModule(logger, "app.startup")
 
 	envConfig := config.NewPGFromEnv(logger)
@@ -53,21 +53,20 @@ func SetupPostgresFromEnv(logger *slog.Logger, migrationsDir string) (*pgxpool.P
 		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
 
+	return pool, nil
+}
+
+func MigratePostgres(pool *pgxpool.Pool, logger *slog.Logger, migrationsDir string) error {
+	logger = logging.WithModule(logger, "app.startup")
+
 	goose.SetLogger(&logging.GooseLogger{Base: logger})
 
-	err = goose.SetDialect("postgres")
+	err := goose.SetDialect("postgres")
 	if err != nil {
-		return nil, fmt.Errorf("failed to set goose dialect: %v", err)
+		return nil
 	}
 
-	db := stdlib.OpenDBFromPool(pool)
-
-	err = goose.Up(db, migrationsDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %v", err)
-	}
-
-	return pool, nil
+	return goose.Up(stdlib.OpenDBFromPool(pool), migrationsDir)
 }
 
 func SetupRedisFromEnv(logger *slog.Logger) (*redis.Client, error) {

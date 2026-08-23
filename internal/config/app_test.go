@@ -18,7 +18,7 @@ var defaultAppConfig = config.App{
 	Port:           "8080",
 	AdminPort:      "9091",
 	Host:           "0.0.0.0",
-	SwaggerHost:    "localhost:8080",
+	SwaggerHost:    "127.0.0.1:8080",
 	LogLevel:       "info",
 	Env:            "dev",
 	JWTSecret:      secrecy.SecretString("very_secret"),
@@ -26,18 +26,21 @@ var defaultAppConfig = config.App{
 	AllowedOrigins: config.ParseAllowedOrigins("http://localhost:8080,http://127.0.0.1:8080"),
 }
 
-var appEnvVars = []string{"PORT", "ADMIN_PORT", "HOST", "SWAGGER_HOST", "LOG_LEVEL", "ENV", "JWT_SECRET", "JWT_EXP", "ALLOWED_ORIGINS"}
+var appEnvVars = []string{
+	"APP_PORT", "APP_ADMIN_PORT", "APP_HOST", "APP_SWAGGER_HOST",
+	"APP_LOG_LEVEL", "APP_ENV", "APP_JWT_SECRET", "APP_JWT_EXP", "APP_ALLOWED_ORIGINS",
+}
 
 func setCustomAppEnvVars(t *testing.T) {
-	t.Setenv("PORT", "3000")
-	t.Setenv("HOST", "127.0.0.1")
-	t.Setenv("ADMIN_PORT", "9092")
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("ENV", "prod")
-	t.Setenv("SWAGGER_HOST", "example.com")
-	t.Setenv("JWT_SECRET", "more_secret")
-	t.Setenv("JWT_EXP", "1h")
-	t.Setenv("ALLOWED_ORIGINS", "http://example.com,http://test.com")
+	t.Setenv("APP_PORT", "3000")
+	t.Setenv("APP_HOST", "127.0.0.1")
+	t.Setenv("APP_ADMIN_PORT", "9092")
+	t.Setenv("APP_LOG_LEVEL", "debug")
+	t.Setenv("APP_ENV", "prod")
+	t.Setenv("APP_SWAGGER_HOST", "example.com")
+	t.Setenv("APP_JWT_SECRET", "more_secret")
+	t.Setenv("APP_JWT_EXP", "1h")
+	t.Setenv("APP_ALLOWED_ORIGINS", "http://example.com,http://test.com")
 }
 
 func TestNewAppFromEnv(t *testing.T) {
@@ -110,7 +113,7 @@ func TestApp_LogValue(t *testing.T) {
 		"host":            "0.0.0.0",
 		"log_level":       "info",
 		"env":             "dev",
-		"swagger_host":    "localhost:8080",
+		"swagger_host":    "127.0.0.1:8080",
 		"jwt_secret":      "(11 chars)",
 		"jwt_exp":         "24h0m0s",
 		"allowed_origins": "[http://127.0.0.1:8080 http://localhost:8080]",
