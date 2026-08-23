@@ -31,9 +31,25 @@ func NewPGBoard(pgPool *pgxpool.Pool) *PGBoard {
 
 func (r *PGBoard) Create(ctx context.Context, ownerID domain.UserID, name domain.BoardName, description domain.BoardDescription) (domain.Board, error) {
 	const query = `
-		INSERT INTO boards (owner_id, name, description)
-		VALUES ($1, $2, $3)
-		RETURNING id, owner_id, name, description, created_at, updated_at`
+		WITH created_board AS (
+			INSERT INTO boards (owner_id, name, description)
+			VALUES ($1, $2, $3)
+			RETURNING id, owner_id, name, description, created_at, updated_at
+		),
+		created_event AS (
+			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				'board.created',
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name
+				)
+			FROM created_board b
+			JOIN users u ON u.id = b.owner_id
+		)
+		SELECT b.id, b.owner_id, b.name, b.description, b.created_at, b.updated_at
+		FROM created_board b`
 
 	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, ownerID, name, description))
 	if err != nil {
@@ -179,19 +195,35 @@ func (r *PGBoard) Update(
 	description *domain.BoardDescription,
 ) (domain.Board, error) {
 	const query = `
-		UPDATE boards
-		SET
-			name = COALESCE($1, name),
-			description = COALESCE($2, description),
-			updated_at = CASE
-				WHEN $1 IS NULL
-				 AND $2 IS NULL
-				THEN updated_at
-				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-			END
-		WHERE id = $3
-		  AND owner_id = $4
-		RETURNING id, owner_id, name, description, created_at, updated_at`
+		WITH updated_board AS (
+			UPDATE boards
+			SET
+				name = COALESCE($1, name),
+				description = COALESCE($2, description),
+				updated_at = CASE
+					WHEN $1 IS NULL
+					 AND $2 IS NULL
+					THEN updated_at
+					ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+				END
+			WHERE id = $3
+			  AND owner_id = $4
+			RETURNING id, owner_id, name, description, created_at, updated_at
+		),
+		created_event AS (
+			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				'board.updated',
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name
+				)
+			FROM updated_board b
+			JOIN users u ON u.id = b.owner_id
+		)
+		SELECT b.id, b.owner_id, b.name, b.description, b.created_at, b.updated_at
+		FROM updated_board b`
 
 	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, name, description, boardID, callerID))
 	if err != nil {
@@ -206,16 +238,34 @@ func (r *PGBoard) Update(
 
 func (r *PGBoard) Delete(ctx context.Context, callerID domain.UserID, boardID domain.BoardID) error {
 	const query = `
-		DELETE FROM boards
-		WHERE id = $1
-		  AND owner_id = $2`
+		WITH deleted_board AS (
+			DELETE FROM boards
+			WHERE id = $1
+			  AND owner_id = $2
+			RETURNING id, owner_id, name
+		),
+		created_event AS (
+			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				'board.deleted',
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name
+				)
+			FROM deleted_board b
+			JOIN users u ON u.id = b.owner_id
+		)
+		SELECT b.id
+		FROM deleted_board b`
 
-	cmd, err := r.pgPool.Exec(ctx, query, boardID, callerID)
+	var deletedBoardID uuid.UUID
+	err := r.pgPool.QueryRow(ctx, query, boardID, callerID).Scan(&deletedBoardID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrRowNotFound
+		}
 		return fmt.Errorf("board repo: delete: %v: %w", err, ErrInternal)
-	}
-	if cmd.RowsAffected() == 0 {
-		return ErrRowNotFound
 	}
 
 	return nil
