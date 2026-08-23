@@ -115,6 +115,22 @@ func TestTaskRepository_Create(t *testing.T) {
 			if diff := cmp.Diff(task, storedTasks[0], testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("got stored task mismatch (-want +got):\n%s", diff)
 			}
+
+			AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+				RecipientUserID: fixture.board.OwnerID,
+				Type:            "task.created",
+				Payload: struct {
+					CallerEmail string `json:"callerEmail"`
+					BoardName   string `json:"boardName"`
+					ColumnName  string `json:"columnName"`
+					TaskName    string `json:"taskName"`
+				}{
+					CallerEmail: testutil.ValidEmail().String(),
+					BoardName:   fixture.board.Name.String(),
+					ColumnName:  columnWithoutTasks.Name.String(),
+					TaskName:    task.Name.String(),
+				},
+			}})
 		})
 	}
 }
@@ -410,6 +426,21 @@ func TestTaskRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedTask(t, got, want)
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "task.updated",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+						ColumnName  string `json:"columnName"`
+						TaskName    string `json:"taskName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   fixture.board.Name.String(),
+						ColumnName:  fixture.column.Name.String(),
+						TaskName:    got.Name.String(),
+					},
+				}})
 				return
 			}
 
@@ -622,6 +653,7 @@ func TestTaskRepository_Move(t *testing.T) {
 		}
 		assertTaskIDAndPosition(t, &got[0], fixture.task.ID, 1)
 		assertTaskIDAndPosition(t, &got[1], secondTask.ID, 2)
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{})
 	})
 
 	t.Run("Index out of bounds within column", func(t *testing.T) {
@@ -698,6 +730,28 @@ func TestTaskRepository_Move(t *testing.T) {
 		assertTaskIDAndPosition(t, &destinationTasks[0], firstDestinationTask.ID, 1)
 		assertTaskIDAndPosition(t, &destinationTasks[1], secondTask.ID, 2)
 		assertTaskIDAndPosition(t, &destinationTasks[2], secondDestinationTask.ID, 3)
+
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+			RecipientUserID: board.OwnerID,
+			Type:            "task.moved",
+			Payload: struct {
+				CallerEmail      string `json:"callerEmail"`
+				BoardName        string `json:"boardName"`
+				TaskName         string `json:"taskName"`
+				SourceColumnName string `json:"sourceColumnName"`
+				TargetColumnName string `json:"targetColumnName"`
+				SourcePosition   int64  `json:"sourcePosition"`
+				TargetPosition   int64  `json:"targetPosition"`
+			}{
+				CallerEmail:      testutil.ValidEmail().String(),
+				BoardName:        board.Name.String(),
+				TaskName:         secondTask.Name.String(),
+				SourceColumnName: sourceColumn.Name.String(),
+				TargetColumnName: destinationColumn.Name.String(),
+				SourcePosition:   secondTask.Position.Int64(),
+				TargetPosition:   destinationPosition.Int64(),
+			},
+		}})
 	})
 
 	t.Run("Success move across columns to append", func(t *testing.T) {
@@ -847,6 +901,22 @@ func TestTaskRepository_Delete(t *testing.T) {
 				}
 				assertTaskIDAndPosition(t, &got[0], fixture.task.ID, 1)
 				assertTaskIDAndPosition(t, &got[1], thirdTask.ID, 2)
+
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "task.deleted",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+						ColumnName  string `json:"columnName"`
+						TaskName    string `json:"taskName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   fixture.board.Name.String(),
+						ColumnName:  fixture.column.Name.String(),
+						TaskName:    secondTask.Name.String(),
+					},
+				}})
 				return
 			}
 			if len(got) != 3 {
