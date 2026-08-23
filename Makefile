@@ -6,7 +6,7 @@ VERSION := $(shell git describe --tags --always --dirty || "")
 
 # Run uncontainerized development server only
 dev:
-	go run -ldflags "-X main.version=$(VERSION)" ./cmd/server/main.go
+	go run -ldflags "-X main.version=$(VERSION)" ./cmd/app/main.go
 # Run development environment with docker compose
 dev-env:
 	docker compose --env-file .env.dev up -d
@@ -59,7 +59,7 @@ build-bin: try-fetch-tags
 	GOOS=linux \
 	go build \
 	-ldflags "-X main.version=$(VERSION)" \
-	-o /bin/app ./cmd/server/main.go
+	-o /bin/app ./cmd/app/main.go
 	CGO_ENABLED=0 \
 	GOOS=linux \
 	go build \
@@ -81,7 +81,7 @@ vuln:
 fmt:
 	gofumpt	-l -w .
 swag:
-	swag init -g cmd/server/main.go -o docs/openapi
+	swag init -g cmd/app/main.go -o docs/openapi
 
 # Create a new migration
 migrate-create:
