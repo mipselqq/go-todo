@@ -101,6 +101,20 @@ func TestColumnRepository_Create(t *testing.T) {
 			if diff := cmp.Diff(column, storedColumns[0], testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("got stored column mismatch (-want +got):\n%s", diff)
 			}
+
+			AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+				RecipientUserID: boardWithoutColumns.OwnerID,
+				Type:            "column.created",
+				Payload: struct {
+					CallerEmail string `json:"callerEmail"`
+					BoardName   string `json:"boardName"`
+					ColumnName  string `json:"columnName"`
+				}{
+					CallerEmail: testutil.ValidEmail().String(),
+					BoardName:   boardWithoutColumns.Name.String(),
+					ColumnName:  column.Name.String(),
+				},
+			}})
 		})
 	}
 }
@@ -353,6 +367,19 @@ func TestColumnRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedColumn(t, got, want)
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "column.updated",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+						ColumnName  string `json:"columnName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   fixture.board.Name.String(),
+						ColumnName:  got.Name.String(),
+					},
+				}})
 				return
 			}
 
@@ -483,6 +510,24 @@ func TestColumnRepository_Move(t *testing.T) {
 				assertColumnIDAndPosition(t, &got[0], secondColumn.ID, 1)
 				assertColumnIDAndPosition(t, &got[1], thirdColumn.ID, 2)
 				assertColumnIDAndPosition(t, &got[2], firstColumn.ID, 3)
+
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "column.moved",
+					Payload: struct {
+						CallerEmail    string `json:"callerEmail"`
+						BoardName      string `json:"boardName"`
+						ColumnName     string `json:"columnName"`
+						SourcePosition int64  `json:"sourcePosition"`
+						TargetPosition int64  `json:"targetPosition"`
+					}{
+						CallerEmail:    testutil.ValidEmail().String(),
+						BoardName:      fixture.board.Name.String(),
+						ColumnName:     firstColumn.Name.String(),
+						SourcePosition: firstColumn.Position.Int64(),
+						TargetPosition: destinationPosition.Int64(),
+					},
+				}})
 				return
 			}
 			assertColumnIDAndPosition(t, &got[0], firstColumn.ID, 1)
@@ -543,6 +588,7 @@ func TestColumnRepository_Move(t *testing.T) {
 		}
 		assertColumnIDAndPosition(t, &got[0], fixture.column.ID, 1)
 		assertColumnIDAndPosition(t, &got[1], secondColumn.ID, 2)
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{})
 	})
 
 	t.Run("Index out of bounds", func(t *testing.T) {
@@ -637,6 +683,20 @@ func TestColumnRepository_Delete(t *testing.T) {
 				}
 				assertColumnIDAndPosition(t, &got[0], firstColumn.ID, 1)
 				assertColumnIDAndPosition(t, &got[1], thirdColumn.ID, 2)
+
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "column.deleted",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+						ColumnName  string `json:"columnName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   fixture.board.Name.String(),
+						ColumnName:  secondColumn.Name.String(),
+					},
+				}})
 				return
 			}
 			if len(got) != 3 {
