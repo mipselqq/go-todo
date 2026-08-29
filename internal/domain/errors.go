@@ -21,3 +21,9 @@ func ExtractValidationIssues(err error) []string {
 	}
 	return []string{err.Error()}
 }
+
+func appendIssues(issues *[]string, err error) {
+	if err != nil {
+		*issues = append(*issues, ExtractValidationIssues(err)...)
+	}
+}
