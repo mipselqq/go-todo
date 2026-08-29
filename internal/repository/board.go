@@ -40,7 +40,7 @@ func (r *PGBoard) Create(ctx context.Context, ownerID domain.UserID, name domain
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'board.created',
+				$4,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name
@@ -51,7 +51,7 @@ func (r *PGBoard) Create(ctx context.Context, ownerID domain.UserID, name domain
 		SELECT b.id, b.owner_id, b.name, b.description, b.created_at, b.updated_at
 		FROM created_board b`
 
-	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, ownerID, name, description))
+	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, ownerID, name, description, domain.TypeBoardCreated))
 	if err != nil {
 		return domain.Board{}, fmt.Errorf("board repo: create: %v: %w", err, ErrInternal)
 	}
@@ -214,7 +214,7 @@ func (r *PGBoard) Update(
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'board.updated',
+				$5,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name
@@ -225,7 +225,7 @@ func (r *PGBoard) Update(
 		SELECT b.id, b.owner_id, b.name, b.description, b.created_at, b.updated_at
 		FROM updated_board b`
 
-	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, name, description, boardID, callerID))
+	board, err := ScanBoard(r.pgPool.QueryRow(ctx, query, name, description, boardID, callerID, domain.TypeBoardUpdated))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Board{}, ErrRowNotFound
@@ -248,7 +248,7 @@ func (r *PGBoard) Delete(ctx context.Context, callerID domain.UserID, boardID do
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'board.deleted',
+				$3,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name
@@ -260,7 +260,7 @@ func (r *PGBoard) Delete(ctx context.Context, callerID domain.UserID, boardID do
 		FROM deleted_board b`
 
 	var deletedBoardID uuid.UUID
-	err := r.pgPool.QueryRow(ctx, query, boardID, callerID).Scan(&deletedBoardID)
+	err := r.pgPool.QueryRow(ctx, query, boardID, callerID, domain.TypeBoardDeleted).Scan(&deletedBoardID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRowNotFound

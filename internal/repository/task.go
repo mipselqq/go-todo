@@ -128,7 +128,7 @@ func (r *PGTask) Create(
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'task.created',
+				@event_type,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name,
@@ -151,6 +151,7 @@ func (r *PGTask) Create(
 		"column_id":   columnID,
 		"name":        name,
 		"description": description,
+		"event_type":  domain.TypeTaskCreated,
 	}
 	batch := &pgx.Batch{}
 	batch.Queue(beginQuery)
@@ -330,7 +331,7 @@ func (r *PGTask) Update(
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'task.updated',
+				$7,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name,
@@ -345,7 +346,7 @@ func (r *PGTask) Update(
 		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
 		FROM updated_task t`
 
-	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, callerID, boardID, columnID, taskID, name, description))
+	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, callerID, boardID, columnID, taskID, name, description, domain.TypeTaskUpdated))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Task{}, ErrRowNotFound
@@ -434,7 +435,7 @@ func (r *PGTask) Move(
 		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
-			'task.moved',
+			@event_type,
 			jsonb_build_object(
 				'callerEmail', u.email,
 				'boardName', b.name,
@@ -584,6 +585,7 @@ func (r *PGTask) Move(
 		"task_id":           taskID,
 		"target_column_id":  targetColumnID,
 		"current_position":  currentPosition,
+		"event_type":        domain.TypeTaskMoved,
 	})
 	if err != nil {
 		return domain.ColumnID{}, domain.TaskPosition{}, fmt.Errorf("task repo: move insert outbox event: %v: %w", err, ErrInternal)
@@ -630,7 +632,7 @@ func (r *PGTask) Delete(
 		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
-			'task.deleted',
+			@event_type,
 			jsonb_build_object(
 				'callerEmail', u.email,
 				'boardName', b.name,
@@ -694,6 +696,7 @@ func (r *PGTask) Delete(
 		"column_id":        columnID,
 		"task_name":        deletedName,
 		"deleted_position": deletedPosition,
+		"event_type":       domain.TypeTaskDeleted,
 	})
 	if err != nil {
 		return fmt.Errorf("task repo: delete insert outbox event: %v: %w", err, ErrInternal)

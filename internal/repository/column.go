@@ -63,7 +63,7 @@ func (r *PGColumn) Create(
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'column.created',
+				@event_type,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name,
@@ -83,6 +83,7 @@ func (r *PGColumn) Create(
 		"board_id":    boardID,
 		"name":        name,
 		"description": description,
+		"event_type":  domain.TypeColumnCreated,
 	}
 	batch := &pgx.Batch{}
 	batch.Queue(beginQuery)
@@ -240,7 +241,7 @@ func (r *PGColumn) Update(
 			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
-				'column.updated',
+				$6,
 				jsonb_build_object(
 					'callerEmail', u.email,
 					'boardName', b.name,
@@ -253,7 +254,7 @@ func (r *PGColumn) Update(
 		SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
 		FROM updated_column c`
 
-	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID, callerID))
+	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID, callerID, domain.TypeColumnUpdated))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Column{}, ErrRowNotFound
@@ -328,7 +329,7 @@ func (r *PGColumn) Move(
 		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
-			'column.moved',
+			@event_type,
 			jsonb_build_object(
 				'callerEmail', u.email,
 				'boardName', b.name,
@@ -426,6 +427,7 @@ func (r *PGColumn) Move(
 		"board_id":         boardID,
 		"column_id":        columnID,
 		"current_position": currentPosition,
+		"event_type":       domain.TypeColumnMoved,
 	})
 	if err != nil {
 		return domain.ColumnPosition{}, fmt.Errorf("column repo: move insert outbox event: %v: %w", err, ErrInternal)
@@ -479,7 +481,7 @@ func (r *PGColumn) Delete(
 		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
-			'column.deleted',
+			@event_type,
 			jsonb_build_object(
 				'callerEmail', u.email,
 				'boardName', b.name,
@@ -541,6 +543,7 @@ func (r *PGColumn) Delete(
 	cmd, err := tx.Exec(ctx, insertDeletedEventQuery, pgx.NamedArgs{
 		"board_id":    boardID,
 		"column_name": deletedName,
+		"event_type":  domain.TypeColumnDeleted,
 	})
 	if err != nil {
 		return fmt.Errorf("column repo: delete insert outbox event: %v: %w", err, ErrInternal)
