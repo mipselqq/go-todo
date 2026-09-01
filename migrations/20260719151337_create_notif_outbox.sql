@@ -7,7 +7,7 @@ CREATE TABLE notification_outbox (
     created_at TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
-CREATE INDEX notif_outbox_recipient_id_idx
+CREATE INDEX notification_outbox_recipient_id_idx
     ON notification_outbox (recipient_user_id, id);
 
 -- +goose Down

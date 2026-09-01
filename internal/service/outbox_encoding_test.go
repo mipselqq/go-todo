@@ -167,12 +167,9 @@ func TestParseNotificationPayload_Message(t *testing.T) {
 				Payload:     parsed,
 			}
 
-			gotMessage, err := got.Message()
-			if err != nil {
-				t.Fatalf("Message() error = %v", err)
-			}
+			gotMessage := service.FormatNotificationMessage(got)
 			if gotMessage != tt.wantMessage {
-				t.Errorf("Message() = %q, want %q", gotMessage, tt.wantMessage)
+				t.Errorf("FormatNotificationMessage() = %q, want %q", gotMessage, tt.wantMessage)
 			}
 		})
 	}

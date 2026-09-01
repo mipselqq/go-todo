@@ -315,7 +315,7 @@ func AssertOutboxEvents(t *testing.T, pool *pgxpool.Pool, wantEvents []WantOutbo
 
 	const query = `
 		SELECT id, recipient_user_id, event_type, payload, created_at
-		FROM notif_outbox
+		FROM notification_outbox
 		ORDER BY id`
 
 	rows, err := pool.Query(ctx, query)
@@ -394,7 +394,7 @@ func AssertOutboxEvents(t *testing.T, pool *pgxpool.Pool, wantEvents []WantOutbo
 		t.Errorf("got %d outbox events, want %d", eventsCount, len(wantEvents))
 	}
 
-	AssertTimestampPrecisionAtLeastMillis(t, pool, "notif_outbox", "created_at")
+	AssertTimestampPrecisionAtLeastMillis(t, pool, "notification_outbox", "created_at")
 }
 
 func ListUsers(t *testing.T, pool *pgxpool.Pool) []domain.User {

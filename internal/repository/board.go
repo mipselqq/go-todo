@@ -37,7 +37,7 @@ func (r *PGBoard) Create(ctx context.Context, ownerID domain.UserID, name domain
 			RETURNING id, owner_id, name, description, created_at, updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				$4,
@@ -211,7 +211,7 @@ func (r *PGBoard) Update(
 			RETURNING id, owner_id, name, description, created_at, updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				$5,
@@ -245,7 +245,7 @@ func (r *PGBoard) Delete(ctx context.Context, callerID domain.UserID, boardID do
 			RETURNING id, owner_id, name
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				$3,

@@ -60,7 +60,7 @@ func (r *PGColumn) Create(
 			RETURNING id, board_id, name, description, position, created_at, updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				@event_type,
@@ -238,7 +238,7 @@ func (r *PGColumn) Update(
 			RETURNING c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				$6,
@@ -326,7 +326,7 @@ func (r *PGColumn) Move(
 		  AND id = @column_id`
 
 		insertMovedEventQuery = `
-		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
 			@event_type,
@@ -478,7 +478,7 @@ func (r *PGColumn) Delete(
 		  AND position > @deleted_position`
 
 		insertDeletedEventQuery = `
-		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
 			@event_type,

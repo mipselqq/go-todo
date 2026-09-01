@@ -1,10 +1,5 @@
 package domain
 
-import (
-	"errors"
-	"fmt"
-)
-
 const (
 	TypeBoardCreated  = "board.created"
 	TypeBoardUpdated  = "board.updated"
@@ -20,8 +15,6 @@ const (
 
 	ErrInvalidNotificationType    = "Invalid notification type"
 	ErrInvalidNotificationPayload = "Invalid notification payload"
-
-	ErrUnexpectedNotificationPayload = "unexpected notification payload"
 )
 
 type NotificationType struct {
@@ -123,35 +116,6 @@ type TaskDeleted struct {
 	BoardName   BoardName
 	ColumnName  ColumnName
 	TaskName    TaskName
-}
-
-func (n Notification) Message() (string, error) {
-	switch p := n.Payload.(type) {
-	case BoardCreated:
-		return fmt.Sprintf("%s created board %q", p.CallerEmail, p.BoardName), nil
-	case BoardUpdated:
-		return fmt.Sprintf("%s updated board %q", p.CallerEmail, p.BoardName), nil
-	case BoardDeleted:
-		return fmt.Sprintf("%s deleted board %q", p.CallerEmail, p.BoardName), nil
-	case ColumnCreated:
-		return fmt.Sprintf("%s created column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName), nil
-	case ColumnUpdated:
-		return fmt.Sprintf("%s updated column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName), nil
-	case ColumnMoved:
-		return fmt.Sprintf("%s moved column %q on board %q from position %d to %d", p.CallerEmail, p.ColumnName, p.BoardName, p.SourcePosition.Int64(), p.TargetPosition.Int64()), nil
-	case ColumnDeleted:
-		return fmt.Sprintf("%s deleted column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName), nil
-	case TaskCreated:
-		return fmt.Sprintf("%s created task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName), nil
-	case TaskUpdated:
-		return fmt.Sprintf("%s updated task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName), nil
-	case TaskMoved:
-		return fmt.Sprintf("%s moved task %q on board %q from %q (%d) to %q (%d)", p.CallerEmail, p.TaskName, p.BoardName, p.SourceColumnName, p.SourcePosition.Int64(), p.TargetColumnName, p.TargetPosition.Int64()), nil
-	case TaskDeleted:
-		return fmt.Sprintf("%s deleted task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName), nil
-	default:
-		return "", errors.New(ErrUnexpectedNotificationPayload)
-	}
 }
 
 func (BoardCreated) notificationPayload()  {}

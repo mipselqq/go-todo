@@ -125,7 +125,7 @@ func (r *PGTask) Create(
 			RETURNING id, column_id, name, description, position, created_at, updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				@event_type,
@@ -328,7 +328,7 @@ func (r *PGTask) Update(
 			RETURNING t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
 		),
 		created_event AS (
-			INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 			SELECT
 				b.owner_id,
 				$7,
@@ -432,7 +432,7 @@ func (r *PGTask) Move(
 		WHERE id = @task_id`
 
 		insertMovedEventQuery = `
-		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
 			@event_type,
@@ -629,7 +629,7 @@ func (r *PGTask) Delete(
 		  AND position > @deleted_position`
 
 		insertDeletedEventQuery = `
-		INSERT INTO notif_outbox (recipient_user_id, event_type, payload)
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
 		SELECT
 			b.owner_id,
 			@event_type,
