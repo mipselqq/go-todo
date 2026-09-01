@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -40,7 +39,7 @@ func NewNotificationType(s string) (NotificationType, error) {
 	}
 }
 
-func (t NotificationType) String() string {
+func (t NotificationType) Value() string {
 	return t.value
 }
 
@@ -52,24 +51,6 @@ type Notification struct {
 	RecipientID UserID
 	Type        NotificationType
 	Payload     NotificationPayload
-}
-
-func NewNotification(recipientID UserID, eventType string, payload []byte) (Notification, error) {
-	notificationType, err := NewNotificationType(eventType)
-	if err != nil {
-		return Notification{}, err
-	}
-
-	parsed, payloadIssues := parseNotificationPayload(notificationType, payload)
-	if len(payloadIssues) > 0 {
-		return Notification{}, &errValidation{Issues: payloadIssues}
-	}
-
-	return Notification{
-		RecipientID: recipientID,
-		Type:        notificationType,
-		Payload:     parsed,
-	}, nil
 }
 
 type BoardCreated struct {
@@ -142,185 +123,6 @@ type TaskDeleted struct {
 	BoardName   BoardName
 	ColumnName  ColumnName
 	TaskName    TaskName
-}
-
-func parseNotificationPayload(t NotificationType, payloadBytes []byte) (payload NotificationPayload, issues []string) {
-	switch t.value {
-	case TypeBoardCreated, TypeBoardUpdated, TypeBoardDeleted:
-		var wire struct {
-			CallerEmail string `json:"callerEmail"`
-			BoardName   string `json:"boardName"`
-		}
-		err := json.Unmarshal(payloadBytes, &wire)
-		if err != nil {
-			return nil, []string{ErrInvalidNotificationPayload}
-		}
-
-		callerEmail, err := NewEmail(wire.CallerEmail)
-		appendIssues(&issues, err)
-		boardName, err := NewBoardName(wire.BoardName)
-		appendIssues(&issues, err)
-
-		if len(issues) > 0 {
-			return nil, issues
-		}
-
-		switch t.value {
-		case TypeBoardCreated:
-			return BoardCreated{CallerEmail: callerEmail, BoardName: boardName}, nil
-		case TypeBoardUpdated:
-			return BoardUpdated{CallerEmail: callerEmail, BoardName: boardName}, nil
-		default:
-			return BoardDeleted{CallerEmail: callerEmail, BoardName: boardName}, nil
-		}
-
-	case TypeColumnCreated, TypeColumnUpdated, TypeColumnDeleted:
-		var wire struct {
-			CallerEmail string `json:"callerEmail"`
-			BoardName   string `json:"boardName"`
-			ColumnName  string `json:"columnName"`
-		}
-		err := json.Unmarshal(payloadBytes, &wire)
-		if err != nil {
-			return nil, []string{ErrInvalidNotificationPayload}
-		}
-
-		callerEmail, err := NewEmail(wire.CallerEmail)
-		appendIssues(&issues, err)
-		boardName, err := NewBoardName(wire.BoardName)
-		appendIssues(&issues, err)
-		columnName, err := NewColumnName(wire.ColumnName)
-		appendIssues(&issues, err)
-
-		if len(issues) > 0 {
-			return nil, issues
-		}
-
-		switch t.value {
-		case TypeColumnCreated:
-			return ColumnCreated{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName}, nil
-		case TypeColumnUpdated:
-			return ColumnUpdated{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName}, nil
-		default:
-			return ColumnDeleted{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName}, nil
-		}
-
-	case TypeColumnMoved:
-		var wire struct {
-			CallerEmail    string `json:"callerEmail"`
-			BoardName      string `json:"boardName"`
-			ColumnName     string `json:"columnName"`
-			SourcePosition int64  `json:"sourcePosition"`
-			TargetPosition int64  `json:"targetPosition"`
-		}
-		err := json.Unmarshal(payloadBytes, &wire)
-		if err != nil {
-			return nil, []string{ErrInvalidNotificationPayload}
-		}
-
-		callerEmail, err := NewEmail(wire.CallerEmail)
-		appendIssues(&issues, err)
-		boardName, err := NewBoardName(wire.BoardName)
-		appendIssues(&issues, err)
-		columnName, err := NewColumnName(wire.ColumnName)
-		appendIssues(&issues, err)
-		sourcePosition, err := NewColumnPosition(wire.SourcePosition)
-		appendIssues(&issues, err)
-		targetPosition, err := NewColumnPosition(wire.TargetPosition)
-		appendIssues(&issues, err)
-
-		if len(issues) > 0 {
-			return nil, issues
-		}
-
-		return ColumnMoved{
-			CallerEmail:    callerEmail,
-			BoardName:      boardName,
-			ColumnName:     columnName,
-			SourcePosition: sourcePosition,
-			TargetPosition: targetPosition,
-		}, nil
-
-	case TypeTaskCreated, TypeTaskUpdated, TypeTaskDeleted:
-		var wire struct {
-			CallerEmail string `json:"callerEmail"`
-			BoardName   string `json:"boardName"`
-			ColumnName  string `json:"columnName"`
-			TaskName    string `json:"taskName"`
-		}
-		err := json.Unmarshal(payloadBytes, &wire)
-		if err != nil {
-			return nil, []string{ErrInvalidNotificationPayload}
-		}
-		callerEmail, err := NewEmail(wire.CallerEmail)
-		appendIssues(&issues, err)
-		boardName, err := NewBoardName(wire.BoardName)
-		appendIssues(&issues, err)
-		columnName, err := NewColumnName(wire.ColumnName)
-		appendIssues(&issues, err)
-		taskName, err := NewTaskName(wire.TaskName)
-		appendIssues(&issues, err)
-
-		if len(issues) > 0 {
-			return nil, issues
-		}
-
-		switch t.value {
-		case TypeTaskCreated:
-			return TaskCreated{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName, TaskName: taskName}, nil
-		case TypeTaskUpdated:
-			return TaskUpdated{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName, TaskName: taskName}, nil
-		default:
-			return TaskDeleted{CallerEmail: callerEmail, BoardName: boardName, ColumnName: columnName, TaskName: taskName}, nil
-		}
-
-	case TypeTaskMoved:
-		var wire struct {
-			CallerEmail      string `json:"callerEmail"`
-			BoardName        string `json:"boardName"`
-			TaskName         string `json:"taskName"`
-			SourceColumnName string `json:"sourceColumnName"`
-			TargetColumnName string `json:"targetColumnName"`
-			SourcePosition   int64  `json:"sourcePosition"`
-			TargetPosition   int64  `json:"targetPosition"`
-		}
-		err := json.Unmarshal(payloadBytes, &wire)
-		if err != nil {
-			return nil, []string{ErrInvalidNotificationPayload}
-		}
-
-		callerEmail, err := NewEmail(wire.CallerEmail)
-		appendIssues(&issues, err)
-		boardName, err := NewBoardName(wire.BoardName)
-		appendIssues(&issues, err)
-		taskName, err := NewTaskName(wire.TaskName)
-		appendIssues(&issues, err)
-		sourceColumnName, err := NewColumnName(wire.SourceColumnName)
-		appendIssues(&issues, err)
-		targetColumnName, err := NewColumnName(wire.TargetColumnName)
-		appendIssues(&issues, err)
-		sourcePosition, err := NewTaskPosition(wire.SourcePosition)
-		appendIssues(&issues, err)
-		targetPosition, err := NewTaskPosition(wire.TargetPosition)
-		appendIssues(&issues, err)
-
-		if len(issues) > 0 {
-			return nil, issues
-		}
-
-		return TaskMoved{
-			CallerEmail:      callerEmail,
-			BoardName:        boardName,
-			TaskName:         taskName,
-			SourceColumnName: sourceColumnName,
-			TargetColumnName: targetColumnName,
-			SourcePosition:   sourcePosition,
-			TargetPosition:   targetPosition,
-		}, nil
-
-	default:
-		return nil, []string{ErrInvalidNotificationType}
-	}
 }
 
 func (n Notification) Message() (string, error) {

@@ -1,4 +1,4 @@
-package domain_test
+package service_test
 
 import (
 	"testing"
@@ -6,10 +6,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"goroutine/internal/domain"
+	"goroutine/internal/service"
 	"goroutine/internal/testutil"
 )
 
-func TestNewNotification_Message(t *testing.T) {
+func TestParseNotificationPayload_Message(t *testing.T) {
 	t.Parallel()
 
 	recipient := testutil.ValidUserID()
@@ -140,11 +141,13 @@ func TestNewNotification_Message(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := domain.NewNotification(tt.recipientID, tt.eventType, []byte(tt.payload))
+			notificationType, err := domain.NewNotificationType(tt.eventType)
 
 			var gotIssues []string
 			if err != nil {
 				gotIssues = domain.ExtractValidationIssues(err)
+			} else {
+				_, gotIssues = service.ParseNotificationPayload(notificationType, []byte(tt.payload))
 			}
 
 			diff := cmp.Diff(tt.wantIssues, gotIssues)
@@ -155,6 +158,13 @@ func TestNewNotification_Message(t *testing.T) {
 
 			if tt.wantIssues != nil {
 				return
+			}
+
+			parsed, _ := service.ParseNotificationPayload(notificationType, []byte(tt.payload))
+			got := domain.Notification{
+				RecipientID: tt.recipientID,
+				Type:        notificationType,
+				Payload:     parsed,
 			}
 
 			gotMessage, err := got.Message()
