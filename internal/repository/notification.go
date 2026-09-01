@@ -58,6 +58,17 @@ func (r *PGNotification) Claim(ctx context.Context, count int) ([]OutboxEvent, e
 	return result, nil
 }
 
+func (r *PGNotification) Ack(ctx context.Context, ids []int64) error {
+	const query = `DELETE FROM notification_outbox WHERE id = ANY(@ids)`
+
+	_, err := r.pgPool.Exec(ctx, query, pgx.NamedArgs{"ids": ids})
+	if err != nil {
+		return fmt.Errorf("notification repo: ack: %v: %w", err, ErrInternal)
+	}
+
+	return nil
+}
+
 func ScanOutboxRecord(row interface{ Scan(...any) error }) (OutboxEvent, error) {
 	var record OutboxEvent
 	err := row.Scan(

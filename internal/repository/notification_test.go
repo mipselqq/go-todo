@@ -77,6 +77,23 @@ func TestNotificationRepository_Claim(t *testing.T) {
 	}
 }
 
+func TestNotificationRepository_Ack(t *testing.T) {
+	pool, r := notificationRepoPrelude(t)
+
+	testutil.TruncateAllTables(t, pool)
+
+	user := domain.NewUserID()
+	CreateUser(t, pool, user, testutil.ValidEmail(), testutil.ValidPasswordHash())
+	InsertOutboxEvents(t, pool, EventsForRecipients(user, user))
+
+	err := r.Ack(context.Background(), []int64{1, 2})
+	if err != nil {
+		t.Fatalf("Ack() error = %v", err)
+	}
+
+	AssertOutboxEvents(t, pool, []WantOutboxEvent{})
+}
+
 func notificationRepoPrelude(t *testing.T) (*pgxpool.Pool, *repository.PGNotification) {
 	t.Helper()
 
