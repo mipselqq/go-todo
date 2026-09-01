@@ -10,21 +10,21 @@ import (
 	"goroutine/internal/domain"
 )
 
-type telegramClient struct {
+type TelegramClient struct {
 	token   domain.TelegramToken
 	baseURL string
 	http    *http.Client
 }
 
-func NewTelegramClient(baseURL string, token domain.TelegramToken) *telegramClient {
-	return &telegramClient{
+func NewTelegramClient(baseURL string, token domain.TelegramToken) *TelegramClient {
+	return &TelegramClient{
 		token:   token,
 		baseURL: baseURL,
 		http:    &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-func (c *telegramClient) sendMessage(ctx context.Context, chatID int64, text domain.TelegramMessage) error {
+func (c *TelegramClient) sendMessage(ctx context.Context, chatID int64, text domain.TelegramMessage) error {
 	q := url.Values{}
 	q.Set("chat_id", fmt.Sprintf("%d", chatID))
 	q.Set("text", text.String())
@@ -49,6 +49,6 @@ func (c *telegramClient) sendMessage(ctx context.Context, chatID int64, text dom
 	return nil
 }
 
-func (c *telegramClient) Notify(ctx context.Context, chatID domain.TelegramChatID, text domain.TelegramMessage) error {
+func (c *TelegramClient) Notify(ctx context.Context, chatID domain.TelegramChatID, text domain.TelegramMessage) error {
 	return c.sendMessage(ctx, chatID.Int64(), text)
 }
