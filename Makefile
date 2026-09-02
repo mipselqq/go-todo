@@ -3,6 +3,7 @@ migrate-status migrate-create tools try-fetch-tags vuln happy-load \
 test-race test-integration-race test-k6-race test-some-race
 
 VERSION := $(shell git describe --tags --always --dirty || "")
+SHELL := /bin/bash
 
 # Run uncontainerized HTTP server and notification worker
 dev:
@@ -10,7 +11,7 @@ dev:
 
 # Run uncontainerized HTTP server (app) or notification worker (notify)
 app notify:
-	go run -ldflags "-X main.version=$(VERSION)" ./cmd/$@/main.go 2>&1 | awk '{print "[$@] " $$0; fflush()}'
+	set -o pipefail; go run -ldflags "-X main.version=$(VERSION)" ./cmd/$@/main.go 2>&1 | awk '{print "[$@] " $$0; fflush()}'
 
 # Run development environment with docker compose
 dev-env:
