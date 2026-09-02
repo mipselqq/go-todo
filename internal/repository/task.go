@@ -342,6 +342,7 @@ func (r *PGTask) Update(
 			JOIN columns c ON c.id = t.column_id
 			JOIN boards b ON b.id = c.board_id
 			JOIN users u ON u.id = b.owner_id
+			WHERE $5 IS NOT NULL OR $6 IS NOT NULL
 		)
 		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
 		FROM updated_task t`

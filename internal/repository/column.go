@@ -250,6 +250,7 @@ func (r *PGColumn) Update(
 			FROM updated_column c
 			JOIN boards b ON b.id = c.board_id
 			JOIN users u ON u.id = b.owner_id
+			WHERE $1 IS NOT NULL OR $2 IS NOT NULL
 		)
 		SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
 		FROM updated_column c`

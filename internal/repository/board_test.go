@@ -337,6 +337,7 @@ func TestBoardRepository_Update(t *testing.T) {
 		if diff := cmp.Diff(fixture.board, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
 		}
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{})
 	})
 }
 

@@ -221,6 +221,7 @@ func (r *PGBoard) Update(
 				)
 			FROM updated_board b
 			JOIN users u ON u.id = b.owner_id
+			WHERE $1 IS NOT NULL OR $2 IS NOT NULL
 		)
 		SELECT b.id, b.owner_id, b.name, b.description, b.created_at, b.updated_at
 		FROM updated_board b`

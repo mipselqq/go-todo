@@ -470,6 +470,7 @@ func TestTaskRepository_Update(t *testing.T) {
 		if diff := cmp.Diff(fixture.task, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
 		}
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{})
 	})
 }
 
