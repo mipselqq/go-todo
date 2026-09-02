@@ -42,15 +42,15 @@ jobs:
       - name: Create .env file from GitHub Vars/Secrets
         run: |
           cat <<'EOF' > .env.prod
-          APP_ENV=${{ vars.ENV }}
-          APP_LOG_LEVEL=${{ vars.LOG_LEVEL }}
-          APP_JWT_SECRET=${{ secrets.JWT_SECRET }}
-          APP_JWT_EXP=${{ vars.JWT_EXP }}
-          APP_HOST=${{ vars.HOST }}
-          APP_SWAGGER_HOST=${{ vars.SWAGGER_HOST }}
-          APP_PORT=${{ vars.PORT }}
-          APP_ADMIN_PORT=${{ vars.ADMIN_PORT }}
-          APP_ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+          APP_ENV=${{ vars.APP_ENV }}
+          APP_LOG_LEVEL=${{ vars.APP_LOG_LEVEL }}
+          APP_JWT_SECRET=${{ secrets.APP_JWT_SECRET }}
+          APP_JWT_EXP=${{ vars.APP_JWT_EXP }}
+          APP_HOST=${{ vars.APP_HOST }}
+          APP_SWAGGER_HOST=${{ vars.APP_SWAGGER_HOST }}
+          APP_PORT=${{ vars.APP_PORT }}
+          APP_ADMIN_PORT=${{ vars.APP_ADMIN_PORT }}
+          APP_ALLOWED_ORIGINS=${{ vars.APP_ALLOWED_ORIGINS }}
 
           NOTIFY_ENV=${{ vars.NOTIFY_ENV }}
           NOTIFY_LOG_LEVEL=${{ vars.NOTIFY_LOG_LEVEL }}

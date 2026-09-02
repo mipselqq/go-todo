@@ -55,13 +55,14 @@ Variable and secret settings are located in your repository under **Settings > S
 ### Variables
 - `DEPLOY_HOST`: Target server hostname or IP (`goroutine.mipselqq.uk`)
 - `DEPLOY_USERNAME`: SSH user for deployment (`deployer`)
-- `ADMIN_PORT`: Port for administrative endpoints (`9091`) — written to `.env.prod` as `APP_ADMIN_PORT`
-- `ALLOWED_ORIGINS`: Allowed CORS origins — `APP_ALLOWED_ORIGINS`
-- `ENV`: Runtime environment — `APP_ENV`
-- `HOST`: Server bind address — `APP_HOST`
-- `JWT_EXP`: Token expiration — `APP_JWT_EXP`
-- `LOG_LEVEL`: Application log level — `APP_LOG_LEVEL`
-- `PORT`: Main application port — `APP_PORT`
+- `APP_ADMIN_PORT`: Port for administrative endpoints (`9091`)
+- `APP_ALLOWED_ORIGINS`: Allowed CORS origins
+- `APP_ENV`: Runtime environment
+- `APP_HOST`: Server bind address
+- `APP_JWT_EXP`: Token expiration
+- `APP_LOG_LEVEL`: Application log level
+- `APP_PORT`: Main application port
+- `APP_SWAGGER_HOST`: API documentation host
 - `POSTGRES_DB`: Database name (`todo_db`)
 - `POSTGRES_HOST`: Database host (`db`)
 - `POSTGRES_PORT`: Database port (`5432`)
@@ -70,14 +71,13 @@ Variable and secret settings are located in your repository under **Settings > S
 - `REDIS_HOST`: Redis host (`redis`)
 - `REDIS_PORT`: Redis port (`6379`)
 - `TELEGRAM_LINK_TOKEN_TTL`: TTL for Telegram link tokens (`15m`)
-- `SWAGGER_HOST`: API documentation host — `APP_SWAGGER_HOST`
 - `NOTIFY_ENV`: Notifier runtime environment (`dev` / `prod`)
 - `NOTIFY_LOG_LEVEL`: Notifier log level (`info`)
 
 ### Secrets
 - `DEPLOY_SSH_KEY`: Private SSH key for server access
 - `GF_SECURITY_ADMIN_PASSWORD`: Admin password for Grafana
-- `JWT_SECRET`: Secret key used for JWT signing — written to `.env.prod` as `APP_JWT_SECRET`
+- `APP_JWT_SECRET`: Secret key used for JWT signing
 - `POSTGRES_PASSWORD`: Database password
 - `PROMETHEUS_BCRYPT_HASH`: Bcrypt hash of the Prometheus password
 - `PROMETHEUS_PASSWORD`: Plain password for Prometheus
