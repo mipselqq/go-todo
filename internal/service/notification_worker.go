@@ -75,13 +75,13 @@ func (w *notificationWorker) processBatch(ctx context.Context) error {
 func (w *notificationWorker) logNotification(ctx context.Context, event *repository.OutboxEvent) {
 	notificationType, err := domain.NewNotificationType(event.EventType)
 	if err != nil {
-		w.logger.DebugContext(ctx, "invalid notification type", slog.Int64("id", event.ID), slog.String("err", err.Error()))
+		w.logger.DebugContext(ctx, "Invalid notification type", slog.Int64("id", event.ID), slog.String("err", err.Error()))
 		return
 	}
 
 	payload, issues := ParseNotificationPayload(notificationType, event.Payload)
 	if len(issues) > 0 {
-		w.logger.DebugContext(ctx, "invalid notification payload", slog.Int64("id", event.ID), slog.Any("issues", issues))
+		w.logger.DebugContext(ctx, "Invalid notification payload", slog.Int64("id", event.ID), slog.Any("issues", issues))
 		return
 	}
 
@@ -89,5 +89,5 @@ func (w *notificationWorker) logNotification(ctx context.Context, event *reposit
 		Type:    notificationType,
 		Payload: payload,
 	})
-	w.logger.DebugContext(ctx, "notification", slog.Int64("id", event.ID), slog.String("message", message))
+	w.logger.DebugContext(ctx, "Notification", slog.Int64("id", event.ID), slog.String("message", message))
 }

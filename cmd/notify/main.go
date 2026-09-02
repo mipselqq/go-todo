@@ -33,13 +33,13 @@ func main() {
 
 	pool, err := app.SetupPostgresFromEnv(logger)
 	if err != nil {
-		logger.Error("failed to setup postgres", slog.String("err", err.Error()))
+		logger.Error("Failed to setup postgres", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
 	err = app.MigratePostgres(pool, logger, "migrations")
 	if err != nil {
-		logger.Error("failed to migrate postgres", slog.String("err", err.Error()))
+		logger.Error("Failed to migrate postgres", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 
@@ -54,7 +54,7 @@ func main() {
 			return
 		}
 
-		logger.Error("notification worker stopped", slog.String("err", err.Error()))
+		logger.Error("Notification worker stopped", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 }
