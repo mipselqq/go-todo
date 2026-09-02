@@ -314,6 +314,22 @@ func TestColumnRepository_Update(t *testing.T) {
 		t.Errorf("updated column %v not found", got.ID)
 	}
 
+	successUpdateOutboxEvents := func(ownerID domain.UserID, columnName string) []WantOutboxEvent {
+		return []WantOutboxEvent{{
+			RecipientUserID: ownerID,
+			Type:            "column.updated",
+			Payload: struct {
+				CallerEmail string `json:"callerEmail"`
+				BoardName   string `json:"boardName"`
+				ColumnName  string `json:"columnName"`
+			}{
+				CallerEmail: testutil.ValidEmail().String(),
+				BoardName:   testutil.ValidBoardName().String(),
+				ColumnName:  columnName,
+			},
+		}}
+	}
+
 	tests := []struct {
 		name               string
 		useUnrelatedOwner  bool
@@ -367,19 +383,7 @@ func TestColumnRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedColumn(t, got, want)
-				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
-					RecipientUserID: fixture.board.OwnerID,
-					Type:            "column.updated",
-					Payload: struct {
-						CallerEmail string `json:"callerEmail"`
-						BoardName   string `json:"boardName"`
-						ColumnName  string `json:"columnName"`
-					}{
-						CallerEmail: testutil.ValidEmail().String(),
-						BoardName:   fixture.board.Name.String(),
-						ColumnName:  got.Name.String(),
-					},
-				}})
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
 				return
 			}
 
@@ -410,6 +414,7 @@ func TestColumnRepository_Update(t *testing.T) {
 		if updated.Description != newDesc {
 			t.Errorf("got description %q, want %q", updated.Description, newDesc)
 		}
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, updated.Name.String()))
 		storedColumns := ListColumnsByBoardID(t, pool, column.BoardID)
 		if len(storedColumns) != 2 {
 			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 2", len(storedColumns))

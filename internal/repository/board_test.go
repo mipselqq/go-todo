@@ -225,6 +225,20 @@ func TestBoardRepository_Update(t *testing.T) {
 		t.Errorf("updated board %v not found", got.ID)
 	}
 
+	successUpdateOutboxEvents := func(ownerID domain.UserID, boardName string) []WantOutboxEvent {
+		return []WantOutboxEvent{{
+			RecipientUserID: ownerID,
+			Type:            "board.updated",
+			Payload: struct {
+				CallerEmail string `json:"callerEmail"`
+				BoardName   string `json:"boardName"`
+			}{
+				CallerEmail: testutil.ValidEmail().String(),
+				BoardName:   boardName,
+			},
+		}}
+	}
+
 	tests := []struct {
 		name              string
 		useUnrelatedOwner bool
@@ -267,17 +281,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedBoard(t, got, want)
-				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
-					RecipientUserID: fixture.board.OwnerID,
-					Type:            "board.updated",
-					Payload: struct {
-						CallerEmail string `json:"callerEmail"`
-						BoardName   string `json:"boardName"`
-					}{
-						CallerEmail: testutil.ValidEmail().String(),
-						BoardName:   got.Name.String(),
-					},
-				}})
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
 				return
 			}
 
@@ -304,6 +308,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			t.Errorf("Update() error = %v", err)
 		}
 		assertUpdatedBoard(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
 	})
 
 	t.Run("Success partial description only", func(t *testing.T) {
@@ -323,6 +328,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			t.Errorf("Update() error = %v", err)
 		}
 		assertUpdatedBoard(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
 	})
 
 	t.Run("Success no changes", func(t *testing.T) {

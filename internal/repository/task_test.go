@@ -357,6 +357,24 @@ func TestTaskRepository_Update(t *testing.T) {
 		}
 	}
 
+	successUpdateOutboxEvents := func(ownerID domain.UserID, taskName string) []WantOutboxEvent {
+		return []WantOutboxEvent{{
+			RecipientUserID: ownerID,
+			Type:            "task.updated",
+			Payload: struct {
+				CallerEmail string `json:"callerEmail"`
+				BoardName   string `json:"boardName"`
+				ColumnName  string `json:"columnName"`
+				TaskName    string `json:"taskName"`
+			}{
+				CallerEmail: testutil.ValidEmail().String(),
+				BoardName:   testutil.ValidBoardName().String(),
+				ColumnName:  testutil.ValidColumn(domain.NewBoardID()).Name.String(),
+				TaskName:    taskName,
+			},
+		}}
+	}
+
 	tests := []struct {
 		name               string
 		useUnrelatedOwner  bool
@@ -426,21 +444,7 @@ func TestTaskRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedTask(t, got, want)
-				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
-					RecipientUserID: fixture.board.OwnerID,
-					Type:            "task.updated",
-					Payload: struct {
-						CallerEmail string `json:"callerEmail"`
-						BoardName   string `json:"boardName"`
-						ColumnName  string `json:"columnName"`
-						TaskName    string `json:"taskName"`
-					}{
-						CallerEmail: testutil.ValidEmail().String(),
-						BoardName:   fixture.board.Name.String(),
-						ColumnName:  fixture.column.Name.String(),
-						TaskName:    got.Name.String(),
-					},
-				}})
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
 				return
 			}
 
@@ -449,6 +453,62 @@ func TestTaskRepository_Update(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Success partial name only", func(t *testing.T) {
+		testutil.TruncateAllTables(t, pool)
+
+		fixture := setupDefaultBoardHierarchy(t, pool)
+		want := testutil.UpdateValidTask(
+			t,
+			&fixture.task,
+			"Renamed name only",
+			fixture.task.Description.String(),
+			fixture.task.UpdatedAt,
+		)
+
+		got, err := r.Update(
+			context.Background(),
+			fixture.board.OwnerID,
+			fixture.board.ID,
+			fixture.column.ID,
+			fixture.task.ID,
+			&want.Name,
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		assertUpdatedTask(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+	})
+
+	t.Run("Success partial description only", func(t *testing.T) {
+		testutil.TruncateAllTables(t, pool)
+
+		fixture := setupDefaultBoardHierarchy(t, pool)
+		want := testutil.UpdateValidTask(
+			t,
+			&fixture.task,
+			fixture.task.Name.String(),
+			"Renamed description only",
+			fixture.task.UpdatedAt,
+		)
+
+		got, err := r.Update(
+			context.Background(),
+			fixture.board.OwnerID,
+			fixture.board.ID,
+			fixture.column.ID,
+			fixture.task.ID,
+			nil,
+			&want.Description,
+		)
+		if err != nil {
+			t.Fatalf("Update() error = %v", err)
+		}
+		assertUpdatedTask(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+	})
 
 	t.Run("Success no changes", func(t *testing.T) {
 		testutil.TruncateAllTables(t, pool)
