@@ -40,12 +40,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = app.MigratePostgres(pool, logger, "migrations")
-	if err != nil {
-		logger.Error("Failed to migrate postgres", slog.String("err", err.Error()))
-		os.Exit(1)
-	}
-
 	worker := service.NewNotificationWorker(logger, repository.NewPGNotification(pool), time.Second, 30)
 
 	ctx, _ := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

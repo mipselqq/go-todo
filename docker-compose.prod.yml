@@ -93,7 +93,7 @@ services:
       - NOTIFY_ENV
       - NOTIFY_LOG_LEVEL
     depends_on:
-      db:
+      app:
         condition: service_healthy
 
   prometheus:
