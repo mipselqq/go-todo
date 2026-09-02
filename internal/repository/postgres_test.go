@@ -373,13 +373,13 @@ func AssertOutboxEvents(t *testing.T, pool *pgxpool.Pool, wantEvents []WantOutbo
 		if marshalErr != nil {
 			t.Fatalf("marshal expected outbox event %d payload: %v", eventsCount, marshalErr)
 		}
-		var expectedPayload any
-		err = json.Unmarshal(expectedPayloadBytes, &expectedPayload)
+		var wantPayload any
+		err = json.Unmarshal(expectedPayloadBytes, &wantPayload)
 		if err != nil {
 			t.Fatalf("normalize expected outbox event %d payload: %v", eventsCount, marshalErr)
 		}
 
-		diff := cmp.Diff(expectedPayload, gotPayload)
+		diff := cmp.Diff(wantPayload, gotPayload)
 		if diff != "" {
 			t.Errorf("outbox event %d payload mismatch (-want +got):\n%s", eventsCount, diff)
 		}
