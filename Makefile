@@ -1,12 +1,17 @@
-.PHONY: dev test test-integration build-bin lint fmt swag migrate-up migrate-down \
+.PHONY: dev app notify test test-integration build-bin lint fmt swag migrate-up migrate-down \
 migrate-status migrate-create tools try-fetch-tags vuln happy-load \
 test-race test-integration-race test-k6-race test-some-race
 
 VERSION := $(shell git describe --tags --always --dirty || "")
 
-# Run uncontainerized development server only
+# Run uncontainerized HTTP server and notification worker
 dev:
-	go run -ldflags "-X main.version=$(VERSION)" ./cmd/app/main.go
+	$(MAKE) --no-print-directory -j2 app notify
+
+# Run uncontainerized HTTP server (app) or notification worker (notify)
+app notify:
+	go run -ldflags "-X main.version=$(VERSION)" ./cmd/$@/main.go 2>&1 | awk '{print "[$@] " $$0; fflush()}'
+
 # Run development environment with docker compose
 dev-env:
 	docker compose --env-file .env.dev up -d
@@ -55,15 +60,16 @@ test-some-race: test-race test-integration-race
 
 # Build binaries
 build-bin: try-fetch-tags
-	CGO_ENABLED=0 \
-	GOOS=linux \
-	go build \
-	-ldflags "-X main.version=$(VERSION)" \
-	-o /bin/app ./cmd/app/main.go
-	CGO_ENABLED=0 \
-	GOOS=linux \
-	go build \
-	-o /bin/ping ./cmd/ping/main.go
+	CGO_ENABLED=0 GOOS=linux go build \
+    	-ldflags "-X main.version=$(VERSION)" \
+    	-o /bin/app ./cmd/app/main.go
+
+	CGO_ENABLED=0 GOOS=linux go build \
+    	-ldflags "-X main.version=$(VERSION)" \
+    	-o /bin/notify ./cmd/notify/main.go
+
+	CGO_ENABLED=0 GOOS=linux go build \
+    	-o /bin/ping ./cmd/ping/main.go
 
 # Try to fetch tags
 try-fetch-tags:

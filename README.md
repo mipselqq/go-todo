@@ -110,7 +110,7 @@ To get started with this project, follow the steps below:
    ```sh
    make dev-env
    ```
-5. Run the development server:
+5. Run the development server and notification worker:
    ```sh
    make dev
    ```

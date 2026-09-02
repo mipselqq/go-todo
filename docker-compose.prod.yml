@@ -76,6 +76,26 @@ services:
     ports:
       - "127.0.0.1:${APP_PORT}:${APP_PORT}"
 
+  notify:
+    image: ghcr.io/mipselqq/goroutine:latest@sha256:a65ddb3bff9bd41edda77edfff206be18913956ed02eec3904362e388dff5255
+    container_name: goro-notify-prod
+    cpu_shares: 512
+    oom_score_adj: -800
+    restart: unless-stopped
+    entrypoint: ["/notify"]
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+      - POSTGRES_HOST
+      - POSTGRES_PORT
+
+      - NOTIFY_ENV
+      - NOTIFY_LOG_LEVEL
+    depends_on:
+      db:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus:v3.13.2@sha256:1147c92841726a6fef55fe6124491d6f85480f8de204f7d420304ca5bbd0a8f7
     container_name: goro-prometheus-prod
