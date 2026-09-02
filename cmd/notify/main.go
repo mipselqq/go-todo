@@ -22,7 +22,10 @@ var version = "no version bundled by linker"
 
 func main() {
 	if os.Getenv("NOTIFY_ENV") != "prod" {
-		_ = godotenv.Load(".env.dev")
+		err := godotenv.Load(".env.dev")
+		if err != nil {
+			slog.Default().Error("Failed to load development env", slog.String("err", err.Error()))
+		}
 	}
 
 	notifyCfg := config.NewNotifyFromEnv(slog.Default())
