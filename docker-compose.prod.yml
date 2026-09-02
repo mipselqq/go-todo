@@ -35,7 +35,7 @@ services:
       - redis_data_prod:/data
 
   app:
-    image: ghcr.io/mipselqq/goroutine:latest@sha256:a65ddb3bff9bd41edda77edfff206be18913956ed02eec3904362e388dff5255
+    image: ghcr.io/mipselqq/goroutine:latest
     container_name: goro-goroutine-prod
     cpu_shares: 1024
     oom_score_adj: -900
@@ -77,7 +77,7 @@ services:
       - "127.0.0.1:${APP_PORT}:${APP_PORT}"
 
   notify:
-    image: ghcr.io/mipselqq/goroutine:latest@sha256:a65ddb3bff9bd41edda77edfff206be18913956ed02eec3904362e388dff5255
+    image: ghcr.io/mipselqq/goroutine:latest
     container_name: goro-notify-prod
     cpu_shares: 512
     oom_score_adj: -800
