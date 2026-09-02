@@ -120,6 +120,7 @@ Annotated overview of the repository layout:
 - `cmd/` - Entry points (`main.go`).
   - `ping/` - Ping program for distroless healthcheck.
   - `app/` - Main HTTP application entry point.
+  - `notify/` - Notification worker entry point.
 - `docs/` - Handwritten and generated documentation (Swaggo)
 - `infra/` - Infrastructure configs.
    - `alloy/` - Grafana Alloy pipeline (`config.alloy`).
