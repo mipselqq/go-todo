@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"goroutine/internal/repository"
 	"goroutine/internal/testutil"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -296,6 +299,102 @@ func AssertTimestampPrecisionAtLeastMillis(t *testing.T, pool *pgxpool.Pool, tab
 			t.Errorf("got datetime_precision=%d for %s.%s, want >= 3", precision, tableName, columnName)
 		}
 	}
+}
+
+type WantOutboxEvent struct {
+	RecipientUserID domain.UserID
+	Type            string
+	Payload         any
+}
+
+func AssertOutboxEvents(t *testing.T, pool *pgxpool.Pool, wantEvents []WantOutboxEvent) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	const query = `
+		SELECT id, recipient_user_id, event_type, payload, created_at
+		FROM notification_outbox
+		ORDER BY id`
+
+	rows, err := pool.Query(ctx, query)
+	if err != nil {
+		t.Fatalf("query outbox events: %v", err)
+	}
+	defer rows.Close()
+
+	eventsCount := 0
+	for rows.Next() {
+		var (
+			gotID           int64
+			gotRecipientID  uuid.UUID
+			gotType         string
+			gotPayloadBytes []byte
+			gotCreatedAt    time.Time
+		)
+		err = rows.Scan(&gotID, &gotRecipientID, &gotType, &gotPayloadBytes, &gotCreatedAt)
+		if err != nil {
+			t.Fatalf("scan outbox event %d: %v", eventsCount, err)
+		}
+		eventsCount++
+
+		if eventsCount > len(wantEvents) {
+			t.Errorf("got unexpected extra outbox event %d: recipient_user_id=%s event_type=%q payload=%s, want %d", eventsCount, gotRecipientID, gotType, gotPayloadBytes, len(wantEvents))
+			continue
+		}
+
+		if gotID != int64(eventsCount) {
+			t.Errorf("got outbox event %d id=%d, want %d", eventsCount, gotID, eventsCount)
+		}
+		now := time.Now().UTC()
+		if gotCreatedAt.Before(now.Add(15 * -time.Second)) {
+			t.Errorf("got outbox event %d created_at=%v at least 15s before check time %v, want not too late", eventsCount, gotCreatedAt, now)
+		}
+		if gotCreatedAt.After(now) {
+			t.Errorf("got outbox event %d created_at=%v after check time %v, want not in the future", eventsCount, gotCreatedAt, now)
+		}
+
+		wantEvent := wantEvents[eventsCount-1]
+		if gotRecipientID != wantEvent.RecipientUserID.UUID() {
+			t.Errorf("outbox event %d recipient_user_id=%s, want %s", eventsCount, gotRecipientID, wantEvent.RecipientUserID)
+		}
+		if gotType != wantEvent.Type {
+			t.Errorf("outbox event %d event_type=%q, want %q", eventsCount, gotType, wantEvent.Type)
+		}
+
+		var gotPayload any
+		err = json.Unmarshal(gotPayloadBytes, &gotPayload)
+		if err != nil {
+			t.Fatalf("unmarshal outbox event %d payload: %v", eventsCount, err)
+		}
+
+		expectedPayloadBytes, marshalErr := json.Marshal(wantEvent.Payload)
+		if marshalErr != nil {
+			t.Fatalf("marshal expected outbox event %d payload: %v", eventsCount, marshalErr)
+		}
+		var wantPayload any
+		err = json.Unmarshal(expectedPayloadBytes, &wantPayload)
+		if err != nil {
+			t.Fatalf("normalize expected outbox event %d payload: %v", eventsCount, marshalErr)
+		}
+
+		diff := cmp.Diff(wantPayload, gotPayload)
+		if diff != "" {
+			t.Errorf("outbox event %d payload mismatch (-want +got):\n%s", eventsCount, diff)
+		}
+
+	}
+
+	err = rows.Err()
+	if err != nil {
+		t.Fatalf("iterate outbox events: %v", err)
+	}
+	if eventsCount < len(wantEvents) {
+		t.Errorf("got %d outbox events, want %d", eventsCount, len(wantEvents))
+	}
+
+	AssertTimestampPrecisionAtLeastMillis(t, pool, "notification_outbox", "created_at")
 }
 
 func ListUsers(t *testing.T, pool *pgxpool.Pool) []domain.User {

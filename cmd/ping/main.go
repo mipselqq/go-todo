@@ -9,12 +9,12 @@ import (
 )
 
 func main() {
-	port := os.Getenv("PORT")
+	port := os.Getenv("APP_PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	host := os.Getenv("HOST")
+	host := os.Getenv("APP_HOST")
 	if host == "" || host == "0.0.0.0" {
 		host = "127.0.0.1"
 	}

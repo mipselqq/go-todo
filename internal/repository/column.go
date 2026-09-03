@@ -45,18 +45,36 @@ func (r *PGColumn) Create(
 		  AND owner_id = @caller_id
 		FOR UPDATE`
 		insertColumnQuery = `
-		INSERT INTO columns (board_id, name, description, position)
-		SELECT
-		    b.id,
-		    @name,
-		    @description,
-		    COALESCE(MAX(c.position), 0) + 1
-		FROM boards b
-		LEFT JOIN columns c ON c.board_id = b.id
-		WHERE b.id = @board_id
-		  AND b.owner_id = @caller_id
-		GROUP BY b.id
-		RETURNING id, board_id, name, description, position, created_at, updated_at`
+		WITH created_column AS (
+			INSERT INTO columns (board_id, name, description, position)
+			SELECT
+			    b.id,
+			    @name,
+			    @description,
+			    COALESCE(MAX(c.position), 0) + 1
+			FROM boards b
+			LEFT JOIN columns c ON c.board_id = b.id
+			WHERE b.id = @board_id
+			  AND b.owner_id = @caller_id
+			GROUP BY b.id
+			RETURNING id, board_id, name, description, position, created_at, updated_at
+		),
+		created_event AS (
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				@event_type,
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name,
+					'columnName', c.name
+				)
+			FROM created_column c
+			JOIN boards b ON b.id = c.board_id
+			JOIN users u ON u.id = b.owner_id
+		)
+		SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
+		FROM created_column c`
 		commitQuery = `COMMIT`
 	)
 
@@ -65,6 +83,7 @@ func (r *PGColumn) Create(
 		"board_id":    boardID,
 		"name":        name,
 		"description": description,
+		"event_type":  domain.TypeColumnCreated,
 	}
 	batch := &pgx.Batch{}
 	batch.Queue(beginQuery)
@@ -200,24 +219,43 @@ func (r *PGColumn) Update(
 	description *domain.ColumnDescription,
 ) (domain.Column, error) {
 	const query = `
-		UPDATE columns c
-		SET
-			name = COALESCE($1, c.name),
-			description = COALESCE($2, c.description),
-			updated_at = CASE
-				WHEN $1 IS NULL
-				 AND $2 IS NULL
-				THEN c.updated_at
-				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-			END
-		FROM boards b
-		WHERE c.board_id = $3
-		  AND c.id = $4
-		  AND b.id = c.board_id
-		  AND b.owner_id = $5
-		RETURNING c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at`
+		WITH updated_column AS (
+			UPDATE columns c
+			SET
+				name = COALESCE($1, c.name),
+				description = COALESCE($2, c.description),
+				updated_at = CASE
+					WHEN $1 IS NULL
+					 AND $2 IS NULL
+					THEN c.updated_at
+					ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+				END
+			FROM boards b
+			WHERE c.board_id = $3
+			  AND c.id = $4
+			  AND b.id = c.board_id
+			  AND b.owner_id = $5
+			RETURNING c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
+		),
+		created_event AS (
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				$6,
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name,
+					'columnName', c.name
+				)
+			FROM updated_column c
+			JOIN boards b ON b.id = c.board_id
+			JOIN users u ON u.id = b.owner_id
+			WHERE $1 IS NOT NULL OR $2 IS NOT NULL
+		)
+		SELECT c.id, c.board_id, c.name, c.description, c.position, c.created_at, c.updated_at
+		FROM updated_column c`
 
-	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID, callerID))
+	column, err := ScanColumn(r.pgPool.QueryRow(ctx, query, name, description, boardID, columnID, callerID, domain.TypeColumnUpdated))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Column{}, ErrRowNotFound
@@ -287,6 +325,24 @@ func (r *PGColumn) Move(
 		SET position = @target_position
 		WHERE board_id = @board_id
 		  AND id = @column_id`
+
+		insertMovedEventQuery = `
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+		SELECT
+			b.owner_id,
+			@event_type,
+			jsonb_build_object(
+				'callerEmail', u.email,
+				'boardName', b.name,
+				'columnName', c.name,
+				'sourcePosition', @current_position::integer,
+				'targetPosition', c.position
+			)
+		FROM columns c
+		JOIN boards b ON b.id = c.board_id
+		JOIN users u ON u.id = b.owner_id
+		WHERE c.board_id = @board_id
+		  AND c.id = @column_id`
 	)
 
 	tx, err := r.pgPool.Begin(ctx)
@@ -368,6 +424,19 @@ func (r *PGColumn) Move(
 		return domain.ColumnPosition{}, fmt.Errorf("column repo: move column into target: %v: %w", err, ErrInternal)
 	}
 
+	cmd, err := tx.Exec(ctx, insertMovedEventQuery, pgx.NamedArgs{
+		"board_id":         boardID,
+		"column_id":        columnID,
+		"current_position": currentPosition,
+		"event_type":       domain.TypeColumnMoved,
+	})
+	if err != nil {
+		return domain.ColumnPosition{}, fmt.Errorf("column repo: move insert outbox event: %v: %w", err, ErrInternal)
+	}
+	if cmd.RowsAffected() != 1 {
+		return domain.ColumnPosition{}, fmt.Errorf("column repo: move insert outbox event: got %d rows: %w", cmd.RowsAffected(), ErrInternal)
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return domain.ColumnPosition{}, fmt.Errorf("column repo: move commit: %v: %w", err, ErrInternal)
@@ -400,7 +469,7 @@ func (r *PGColumn) Delete(
 		DELETE FROM columns
 		WHERE board_id = @board_id
 		  AND id = @column_id
-		RETURNING position`
+		RETURNING name, position`
 
 		// 4. Close the gap left by the deleted column.
 		compactTrailingColumnsQuery = `
@@ -408,6 +477,20 @@ func (r *PGColumn) Delete(
 		SET position = position - 1
 		WHERE board_id = @board_id
 		  AND position > @deleted_position`
+
+		insertDeletedEventQuery = `
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+		SELECT
+			b.owner_id,
+			@event_type,
+			jsonb_build_object(
+				'callerEmail', u.email,
+				'boardName', b.name,
+				'columnName', @column_name::text
+			)
+		FROM boards b
+		JOIN users u ON u.id = b.owner_id
+		WHERE b.id = @board_id`
 	)
 
 	tx, err := r.pgPool.Begin(ctx)
@@ -435,11 +518,14 @@ func (r *PGColumn) Delete(
 		return fmt.Errorf("column repo: delete defer position constraint: %v: %w", err, ErrInternal)
 	}
 
-	var deletedPosition int64
+	var (
+		deletedName     string
+		deletedPosition int64
+	)
 	err = tx.QueryRow(ctx, deleteColumnQuery, pgx.NamedArgs{
 		"board_id":  boardID.UUID(),
 		"column_id": columnID.UUID(),
-	}).Scan(&deletedPosition)
+	}).Scan(&deletedName, &deletedPosition)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRowNotFound
@@ -453,6 +539,18 @@ func (r *PGColumn) Delete(
 	})
 	if err != nil {
 		return fmt.Errorf("column repo: delete compact trailing columns: %v: %w", err, ErrInternal)
+	}
+
+	cmd, err := tx.Exec(ctx, insertDeletedEventQuery, pgx.NamedArgs{
+		"board_id":    boardID,
+		"column_name": deletedName,
+		"event_type":  domain.TypeColumnDeleted,
+	})
+	if err != nil {
+		return fmt.Errorf("column repo: delete insert outbox event: %v: %w", err, ErrInternal)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("column repo: delete insert outbox event: got %d rows: %w", cmd.RowsAffected(), ErrInternal)
 	}
 
 	err = tx.Commit(ctx)

@@ -1,0 +1,36 @@
+package service
+
+import (
+	"fmt"
+
+	"goroutine/internal/domain"
+)
+
+func FormatNotificationMessage(notification domain.Notification) string {
+	switch p := notification.Payload.(type) {
+	case domain.BoardCreated:
+		return fmt.Sprintf("%s created board %q", p.CallerEmail, p.BoardName)
+	case domain.BoardUpdated:
+		return fmt.Sprintf("%s updated board %q", p.CallerEmail, p.BoardName)
+	case domain.BoardDeleted:
+		return fmt.Sprintf("%s deleted board %q", p.CallerEmail, p.BoardName)
+	case domain.ColumnCreated:
+		return fmt.Sprintf("%s created column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName)
+	case domain.ColumnUpdated:
+		return fmt.Sprintf("%s updated column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName)
+	case domain.ColumnMoved:
+		return fmt.Sprintf("%s moved column %q on board %q from position %d to %d", p.CallerEmail, p.ColumnName, p.BoardName, p.SourcePosition.Int64(), p.TargetPosition.Int64())
+	case domain.ColumnDeleted:
+		return fmt.Sprintf("%s deleted column %q on board %q", p.CallerEmail, p.ColumnName, p.BoardName)
+	case domain.TaskCreated:
+		return fmt.Sprintf("%s created task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName)
+	case domain.TaskUpdated:
+		return fmt.Sprintf("%s updated task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName)
+	case domain.TaskMoved:
+		return fmt.Sprintf("%s moved task %q on board %q from %q (%d) to %q (%d)", p.CallerEmail, p.TaskName, p.BoardName, p.SourceColumnName, p.SourcePosition.Int64(), p.TargetColumnName, p.TargetPosition.Int64())
+	case domain.TaskDeleted:
+		return fmt.Sprintf("%s deleted task %q in column %q on board %q", p.CallerEmail, p.TaskName, p.ColumnName, p.BoardName)
+	default:
+		panic(fmt.Sprintf("BUG: unreachable message payload %T", notification.Payload))
+	}
+}

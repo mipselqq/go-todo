@@ -108,20 +108,40 @@ func (r *PGTask) Create(
 		  AND c.id = @column_id
 		FOR UPDATE OF c`
 		insertTaskQuery = `
-		INSERT INTO tasks (column_id, name, description, position)
-		SELECT
-			c.id,
-			@name,
-			@description,
-			COALESCE(MAX(t.position), 0) + 1
-		FROM boards b
-		JOIN columns c ON c.board_id = b.id
-		LEFT JOIN tasks t ON t.column_id = c.id
-		WHERE b.id = @board_id
-		  AND b.owner_id = @caller_id
-		  AND c.id = @column_id
-		GROUP BY c.id
-		RETURNING id, column_id, name, description, position, created_at, updated_at`
+		WITH created_task AS (
+			INSERT INTO tasks (column_id, name, description, position)
+			SELECT
+				c.id,
+				@name,
+				@description,
+				COALESCE(MAX(t.position), 0) + 1
+			FROM boards b
+			JOIN columns c ON c.board_id = b.id
+			LEFT JOIN tasks t ON t.column_id = c.id
+			WHERE b.id = @board_id
+			  AND b.owner_id = @caller_id
+			  AND c.id = @column_id
+			GROUP BY c.id
+			RETURNING id, column_id, name, description, position, created_at, updated_at
+		),
+		created_event AS (
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				@event_type,
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name,
+					'columnName', c.name,
+					'taskName', t.name
+				)
+			FROM created_task t
+			JOIN columns c ON c.id = t.column_id
+			JOIN boards b ON b.id = c.board_id
+			JOIN users u ON u.id = b.owner_id
+		)
+		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
+		FROM created_task t`
 		commitQuery = `COMMIT`
 	)
 
@@ -131,6 +151,7 @@ func (r *PGTask) Create(
 		"column_id":   columnID,
 		"name":        name,
 		"description": description,
+		"event_type":  domain.TypeTaskCreated,
 	}
 	batch := &pgx.Batch{}
 	batch.Queue(beginQuery)
@@ -286,26 +307,47 @@ func (r *PGTask) Update(
 	description *domain.TaskDescription,
 ) (domain.Task, error) {
 	const query = `
-		UPDATE tasks t
-		SET
-			name = COALESCE($5, t.name),
-			description = COALESCE($6, t.description),
-			updated_at = CASE
-				WHEN $5 IS NULL
-				 AND $6 IS NULL
-				THEN t.updated_at
-				ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-			END
-		FROM columns c
-		JOIN boards b ON b.id = c.board_id
-		WHERE b.id = $2
-		  AND b.owner_id = $1
-		  AND c.id = $3
-		  AND t.column_id = c.id
-		  AND t.id = $4
-		RETURNING t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at`
+		WITH updated_task AS (
+			UPDATE tasks t
+			SET
+				name = COALESCE($5, t.name),
+				description = COALESCE($6, t.description),
+				updated_at = CASE
+					WHEN $5 IS NULL
+					 AND $6 IS NULL
+					THEN t.updated_at
+					ELSE CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+				END
+			FROM columns c
+			JOIN boards b ON b.id = c.board_id
+			WHERE b.id = $2
+			  AND b.owner_id = $1
+			  AND c.id = $3
+			  AND t.column_id = c.id
+			  AND t.id = $4
+			RETURNING t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
+		),
+		created_event AS (
+			INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+			SELECT
+				b.owner_id,
+				$7,
+				jsonb_build_object(
+					'callerEmail', u.email,
+					'boardName', b.name,
+					'columnName', c.name,
+					'taskName', t.name
+				)
+			FROM updated_task t
+			JOIN columns c ON c.id = t.column_id
+			JOIN boards b ON b.id = c.board_id
+			JOIN users u ON u.id = b.owner_id
+			WHERE $5 IS NOT NULL OR $6 IS NOT NULL
+		)
+		SELECT t.id, t.column_id, t.name, t.description, t.position, t.created_at, t.updated_at
+		FROM updated_task t`
 
-	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, callerID, boardID, columnID, taskID, name, description))
+	task, err := ScanTask(r.pgPool.QueryRow(ctx, query, callerID, boardID, columnID, taskID, name, description, domain.TypeTaskUpdated))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.Task{}, ErrRowNotFound
@@ -389,6 +431,30 @@ func (r *PGTask) Move(
 		SET column_id = @target_column_id,
 		    position = @target_position
 		WHERE id = @task_id`
+
+		insertMovedEventQuery = `
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+		SELECT
+			b.owner_id,
+			@event_type,
+			jsonb_build_object(
+				'callerEmail', u.email,
+				'boardName', b.name,
+				'taskName', t.name,
+				'sourceColumnName', source_column.name,
+				'targetColumnName', target_column.name,
+				'sourcePosition', @current_position::integer,
+				'targetPosition', t.position
+			)
+		FROM tasks t
+		JOIN columns source_column ON source_column.id = @current_column_id
+		JOIN columns target_column ON target_column.id = @target_column_id
+		JOIN boards b ON b.id = @board_id
+		JOIN users u ON u.id = b.owner_id
+		WHERE t.id = @task_id
+		  AND source_column.board_id = b.id
+		  AND target_column.board_id = b.id
+		  AND t.column_id = target_column.id`
 	)
 
 	tx, err := r.pgPool.Begin(ctx)
@@ -514,6 +580,21 @@ func (r *PGTask) Move(
 		}
 	}
 
+	cmd, err := tx.Exec(ctx, insertMovedEventQuery, pgx.NamedArgs{
+		"board_id":          boardID,
+		"current_column_id": currentColumnID,
+		"task_id":           taskID,
+		"target_column_id":  targetColumnID,
+		"current_position":  currentPosition,
+		"event_type":        domain.TypeTaskMoved,
+	})
+	if err != nil {
+		return domain.ColumnID{}, domain.TaskPosition{}, fmt.Errorf("task repo: move insert outbox event: %v: %w", err, ErrInternal)
+	}
+	if cmd.RowsAffected() != 1 {
+		return domain.ColumnID{}, domain.TaskPosition{}, fmt.Errorf("task repo: move insert outbox event: got %d rows: %w", cmd.RowsAffected(), ErrInternal)
+	}
+
 	err = tx.Commit(ctx)
 	if err != nil {
 		return domain.ColumnID{}, domain.TaskPosition{}, fmt.Errorf("task repo: move commit: %v: %w", err, ErrInternal)
@@ -539,7 +620,7 @@ func (r *PGTask) Delete(
 		DELETE FROM tasks
 		WHERE column_id = @column_id
 		  AND id = @task_id
-		RETURNING position`
+		RETURNING name, position`
 
 		// 4. Close the gap left by the deleted task.
 		compactTrailingTasksQuery = `
@@ -547,6 +628,23 @@ func (r *PGTask) Delete(
 		SET position = position - 1
 		WHERE column_id = @column_id
 		  AND position > @deleted_position`
+
+		insertDeletedEventQuery = `
+		INSERT INTO notification_outbox (recipient_user_id, event_type, payload)
+		SELECT
+			b.owner_id,
+			@event_type,
+			jsonb_build_object(
+				'callerEmail', u.email,
+				'boardName', b.name,
+				'columnName', c.name,
+				'taskName', @task_name::text
+			)
+		FROM columns c
+		JOIN boards b ON b.id = c.board_id
+		JOIN users u ON u.id = b.owner_id
+		WHERE c.id = @column_id
+		  AND b.id = @board_id`
 	)
 
 	tx, err := r.pgPool.Begin(ctx)
@@ -571,11 +669,14 @@ func (r *PGTask) Delete(
 		return fmt.Errorf("task repo: delete defer position constraint: %v: %w", err, ErrInternal)
 	}
 
-	var deletedPosition int64
+	var (
+		deletedName     string
+		deletedPosition int64
+	)
 	err = tx.QueryRow(ctx, deleteTaskQuery, pgx.NamedArgs{
 		"column_id": columnID,
 		"task_id":   taskID,
-	}).Scan(&deletedPosition)
+	}).Scan(&deletedName, &deletedPosition)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrRowNotFound
@@ -589,6 +690,20 @@ func (r *PGTask) Delete(
 	})
 	if err != nil {
 		return fmt.Errorf("task repo: delete compact trailing tasks: %v: %w", err, ErrInternal)
+	}
+
+	cmd, err := tx.Exec(ctx, insertDeletedEventQuery, pgx.NamedArgs{
+		"board_id":         boardID,
+		"column_id":        columnID,
+		"task_name":        deletedName,
+		"deleted_position": deletedPosition,
+		"event_type":       domain.TypeTaskDeleted,
+	})
+	if err != nil {
+		return fmt.Errorf("task repo: delete insert outbox event: %v: %w", err, ErrInternal)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("task repo: delete insert outbox event: got %d rows: %w", cmd.RowsAffected(), ErrInternal)
 	}
 
 	err = tx.Commit(ctx)

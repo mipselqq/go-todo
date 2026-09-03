@@ -41,7 +41,7 @@ All technologies and methodologies used in the project:
 ## Architecture overview
 ```mermaid
 graph TD
-    Main[cmd/server/main.go]:::config
+    Main[cmd/app/main.go]:::config
     Handler[Handler / Presentation]:::handler
     Service[Service / Use Cases]:::service
     Repo[Repository / Data Access]:::repo
@@ -110,7 +110,7 @@ To get started with this project, follow the steps below:
    ```sh
    make dev-env
    ```
-5. Run the development server:
+5. Run the development server and notification worker:
    ```sh
    make dev
    ```
@@ -119,7 +119,8 @@ To get started with this project, follow the steps below:
 Annotated overview of the repository layout:
 - `cmd/` - Entry points (`main.go`).
   - `ping/` - Ping program for distroless healthcheck.
-  - `server/` - Main HTTP server entry point.
+  - `app/` - Main HTTP application entry point.
+  - `notify/` - Notification worker entry point.
 - `docs/` - Handwritten and generated documentation (Swaggo)
 - `infra/` - Infrastructure configs.
    - `alloy/` - Grafana Alloy pipeline (`config.alloy`).

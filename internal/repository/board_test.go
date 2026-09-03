@@ -58,6 +58,18 @@ func TestBoardRepository_Create(t *testing.T) {
 				if diff := cmp.Diff(board, storedBoard, testutil.CmpAllowUnexported()); diff != "" {
 					t.Errorf("stored board mismatch (-returned +stored):\n%s", diff)
 				}
+
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: fixture.board.OwnerID,
+					Type:            "board.created",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   board.Name.String(),
+					},
+				}})
 				return
 			}
 		}
@@ -213,6 +225,20 @@ func TestBoardRepository_Update(t *testing.T) {
 		t.Errorf("updated board %v not found", got.ID)
 	}
 
+	successUpdateOutboxEvents := func(ownerID domain.UserID, boardName domain.BoardName) []WantOutboxEvent {
+		return []WantOutboxEvent{{
+			RecipientUserID: ownerID,
+			Type:            "board.updated",
+			Payload: struct {
+				CallerEmail string `json:"callerEmail"`
+				BoardName   string `json:"boardName"`
+			}{
+				CallerEmail: testutil.ValidEmail().String(),
+				BoardName:   boardName.String(),
+			},
+		}}
+	}
+
 	tests := []struct {
 		name              string
 		useUnrelatedOwner bool
@@ -255,6 +281,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedBoard(t, got, want)
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 				return
 			}
 
@@ -281,6 +308,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			t.Errorf("Update() error = %v", err)
 		}
 		assertUpdatedBoard(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 	})
 
 	t.Run("Success partial description only", func(t *testing.T) {
@@ -300,6 +328,7 @@ func TestBoardRepository_Update(t *testing.T) {
 			t.Errorf("Update() error = %v", err)
 		}
 		assertUpdatedBoard(t, got, want)
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 	})
 
 	t.Run("Success no changes", func(t *testing.T) {
@@ -314,6 +343,7 @@ func TestBoardRepository_Update(t *testing.T) {
 		if diff := cmp.Diff(fixture.board, got, testutil.CmpAllowUnexported()); diff != "" {
 			t.Errorf("Update() mismatch (-want +got):\n%s", diff)
 		}
+		AssertOutboxEvents(t, pool, []WantOutboxEvent{})
 	})
 }
 
@@ -363,6 +393,17 @@ func TestBoardRepository_Delete(t *testing.T) {
 			want := []domain.Board{fixture.board, fixture.unrelatedBoard}
 			if tt.wantErr == nil {
 				want = []domain.Board{fixture.unrelatedBoard}
+				AssertOutboxEvents(t, pool, []WantOutboxEvent{{
+					RecipientUserID: board.OwnerID,
+					Type:            "board.deleted",
+					Payload: struct {
+						CallerEmail string `json:"callerEmail"`
+						BoardName   string `json:"boardName"`
+					}{
+						CallerEmail: testutil.ValidEmail().String(),
+						BoardName:   board.Name.String(),
+					},
+				}})
 			}
 			if diff := cmp.Diff(want, ListBoards(t, pool), testutil.CmpAllowUnexported()); diff != "" {
 				t.Errorf("stored boards mismatch (-want +got):\n%s", diff)
