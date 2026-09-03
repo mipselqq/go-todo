@@ -63,7 +63,7 @@ func MigratePostgres(pool *pgxpool.Pool, logger *slog.Logger, migrationsDir stri
 
 	err := goose.SetDialect("postgres")
 	if err != nil {
-		return nil
+		return err
 	}
 
 	return goose.Up(stdlib.OpenDBFromPool(pool), migrationsDir)
