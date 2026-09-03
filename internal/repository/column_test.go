@@ -314,7 +314,7 @@ func TestColumnRepository_Update(t *testing.T) {
 		t.Errorf("updated column %v not found", got.ID)
 	}
 
-	successUpdateOutboxEvents := func(ownerID domain.UserID, columnName string) []WantOutboxEvent {
+	successUpdateOutboxEvents := func(ownerID domain.UserID, columnName domain.ColumnName) []WantOutboxEvent {
 		return []WantOutboxEvent{{
 			RecipientUserID: ownerID,
 			Type:            "column.updated",
@@ -325,7 +325,7 @@ func TestColumnRepository_Update(t *testing.T) {
 			}{
 				CallerEmail: testutil.ValidEmail().String(),
 				BoardName:   testutil.ValidBoardName().String(),
-				ColumnName:  columnName,
+				ColumnName:  columnName.String(),
 			},
 		}}
 	}
@@ -383,7 +383,7 @@ func TestColumnRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedColumn(t, got, want)
-				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 				return
 			}
 
@@ -414,7 +414,7 @@ func TestColumnRepository_Update(t *testing.T) {
 		if updated.Description != newDesc {
 			t.Errorf("got description %q, want %q", updated.Description, newDesc)
 		}
-		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, updated.Name.String()))
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, updated.Name))
 		storedColumns := ListColumnsByBoardID(t, pool, column.BoardID)
 		if len(storedColumns) != 2 {
 			t.Fatalf("ListColumnsByBoardID() returned %d columns, want exactly 2", len(storedColumns))

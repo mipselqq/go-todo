@@ -357,7 +357,7 @@ func TestTaskRepository_Update(t *testing.T) {
 		}
 	}
 
-	successUpdateOutboxEvents := func(ownerID domain.UserID, taskName string) []WantOutboxEvent {
+	successUpdateOutboxEvents := func(ownerID domain.UserID, taskName domain.TaskName) []WantOutboxEvent {
 		return []WantOutboxEvent{{
 			RecipientUserID: ownerID,
 			Type:            "task.updated",
@@ -370,7 +370,7 @@ func TestTaskRepository_Update(t *testing.T) {
 				CallerEmail: testutil.ValidEmail().String(),
 				BoardName:   testutil.ValidBoardName().String(),
 				ColumnName:  testutil.ValidColumn(domain.NewBoardID()).Name.String(),
-				TaskName:    taskName,
+				TaskName:    taskName.String(),
 			},
 		}}
 	}
@@ -444,7 +444,7 @@ func TestTaskRepository_Update(t *testing.T) {
 			}
 			if tt.wantErr == nil {
 				assertUpdatedTask(t, got, want)
-				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+				AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 				return
 			}
 
@@ -479,7 +479,7 @@ func TestTaskRepository_Update(t *testing.T) {
 			t.Fatalf("Update() error = %v", err)
 		}
 		assertUpdatedTask(t, got, want)
-		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 	})
 
 	t.Run("Success partial description only", func(t *testing.T) {
@@ -507,7 +507,7 @@ func TestTaskRepository_Update(t *testing.T) {
 			t.Fatalf("Update() error = %v", err)
 		}
 		assertUpdatedTask(t, got, want)
-		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name.String()))
+		AssertOutboxEvents(t, pool, successUpdateOutboxEvents(fixture.board.OwnerID, got.Name))
 	})
 
 	t.Run("Success no changes", func(t *testing.T) {
