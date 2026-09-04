@@ -71,6 +71,9 @@ build-bin: try-fetch-tags
 	CGO_ENABLED=0 GOOS=linux go build \
     	-o /bin/ping ./cmd/ping/main.go
 
+	CGO_ENABLED=0 GOOS=linux go build \
+    	-o /bin/migrate ./cmd/migrate/main.go
+
 # Try to fetch tags
 try-fetch-tags:
 	git fetch --tags || true
