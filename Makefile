@@ -101,6 +101,9 @@ migrate-create:
 migrate-up migrate-down migrate-status: migrate-%:
 	export $$(cat .env.dev | xargs) && goose -dir migrations postgres "user=$$POSTGRES_USER password=$$POSTGRES_PASSWORD dbname=$$POSTGRES_DB host=$$POSTGRES_HOST sslmode=disable" $*
 
+migrate-up-go:
+	export $$(cat .env.dev | xargs) && go run ./cmd/migrate
+
 # Install development tools
 tools:
 	go install github.com/evilmartians/lefthook@v1.13.6
