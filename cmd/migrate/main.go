@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 	"github.com/pressly/goose/v3"
 
 	"goroutine/internal/app"
@@ -13,6 +14,12 @@ import (
 
 func main() {
 	logger := slog.Default()
+	if os.Getenv("APP_ENV") != "prod" {
+		err := godotenv.Load(".env.dev")
+		if err != nil {
+			slog.Default().Error("Failed to load development env", slog.String("err", err.Error()))
+		}
+	}
 
 	pool, err := app.SetupPostgresFromEnv(logger)
 	if err != nil {
