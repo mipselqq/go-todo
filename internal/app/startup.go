@@ -16,8 +16,6 @@ import (
 )
 
 func SetupPostgresFromEnv(logger *slog.Logger) (*pgxpool.Pool, error) {
-	logger = logging.WithModule(logger, "app.startup")
-
 	envConfig := config.NewPGFromEnv(logger)
 
 	logger.Info("Database config", slog.Any("config", envConfig))
@@ -55,8 +53,6 @@ func SetupPostgresFromEnv(logger *slog.Logger) (*pgxpool.Pool, error) {
 }
 
 func SetupRedisFromEnv(logger *slog.Logger) (*redis.Client, error) {
-	logger = logging.WithModule(logger, "app.startup")
-
 	cfg := config.NewRedisFromEnv(logger)
 
 	logger.Info("Redis config", slog.Any("config", cfg))
